@@ -9,9 +9,11 @@ import { TopGGCommandManager } from "./structures/TopGGCommandManager"
 import { ITopGGEvents } from "./structures/TopGGEventHandlers"
 import { VoteWebhook } from "./structures/VoteWebhook"
 import { Vote } from "./structures/Vote"
+import { TopGGApi } from "./structures/TopGGApi"
 
 export * from "./structures/Vote"
 export * from "./structures/VoteWebhook"
+export * from "./structures/TopGGApi"
 
 /** Top.gg refuses to be posted to more often than every 15 minutes. */
 export const MIN_POST_INTERVAL = 900_000
@@ -75,12 +77,15 @@ export class ReForgeTopGG extends ForgeExtension {
     public readonly webhook: VoteWebhook | null
     /** The HTTP server, once it listens. */
     public server: Server | null = null
+    /** Top.gg API access for the API functions. */
+    public readonly api: TopGGApi
     private poster: BasePoster | null = null
     private closed = false
 
     public constructor(public readonly options: IReForgeTopGGOptions = {}) {
         super()
         validateOptions(options)
+        this.api = new TopGGApi(options.token)
         this.webhook = this.webhookEnabled
             ? new VoteWebhook({
                 auth: options.auth,
