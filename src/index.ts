@@ -10,15 +10,19 @@ import { ITopGGEvents } from "./structures/TopGGEventHandlers"
 import { VoteWebhook } from "./structures/VoteWebhook"
 import { Vote } from "./structures/Vote"
 import { TopGGApi } from "./structures/TopGGApi"
+import { DedupeCache, dedupeKey, TEST_DEDUPE_WINDOW } from "./structures/Dedupe"
 
 export * from "./structures/Vote"
 export * from "./structures/VoteWebhook"
 export * from "./structures/TopGGApi"
+export * from "./structures/Dedupe"
 
 /** Top.gg refuses to be posted to more often than every 15 minutes. */
 export const MIN_POST_INTERVAL = 900_000
 export const DEFAULT_PORT = 3000
 export const DEFAULT_PATH = "/dblwebhook"
+/** Top.gg retries a legacy delivery up to 10 times over about half an hour. */
+export const DEFAULT_DEDUPE_WINDOW = 3_600_000
 
 export interface IWebhookOptions {
     /** Port to listen on. Defaults to the top-level `port`, then 3000. */
@@ -52,6 +56,13 @@ export interface IReForgeTopGGOptions {
     post?: PosterOptions | false
     /** Events your commands listen to. */
     events?: Array<keyof ITopGGEvents>
+    /**
+     * Top.gg delivers a vote again when it gets no 2xx answer in time. A vote
+     * of the same user for the same bot within this many ms is dropped as a
+     * repeat. Defaults to 1 hour, 0 turns it off, at most 11 hours (a user can
+     * only vote every 12). Test votes are collapsed for 1 minute at most.
+     */
+    dedupeWindow?: number
 }
 
 /** @deprecated Use {@link IReForgeTopGGOptions}. */
@@ -80,6 +91,8 @@ export class ReForgeTopGG extends ForgeExtension {
     /** Top.gg API access for the API functions. */
     public readonly api: TopGGApi
     private poster: BasePoster | null = null
+    private readonly seen = new DedupeCache()
+    private readonly inFlight = new Set<string>()
     private closed = false
 
     public constructor(public readonly options: IReForgeTopGGOptions = {}) {
@@ -203,8 +216,18 @@ export class ReForgeTopGG extends ForgeExtension {
      * Handles a vote that passed authentication and validation. Public so a
      * webhook mounted elsewhere, or a test, can feed votes in.
      */
-    public async receive(vote: Vote): Promise<void> {
+    public async receive(vote: Vote): Promise<boolean> {
+        const key = dedupeKey(vote)
+        if (this.seen.has(key) || this.inFlight.has(key)) return false
+        this.inFlight.add(key)
+        try {
+            const window = this.options.dedupeWindow ?? DEFAULT_DEDUPE_WINDOW
+            this.seen.add(key, vote.type === "test" ? Math.min(window, TEST_DEDUPE_WINDOW) : window)
+        } finally {
+            this.inFlight.delete(key)
+        }
         this.emitter.emit("voted", vote)
+        return true
     }
 
     private emitError(err: Error) {
@@ -243,6 +266,9 @@ function validateOptions(o: IReForgeTopGGOptions) {
     const w = o.webhook || {}
     if (w.path !== undefined && !/^\/\S*$/.test(w.path)) fail("\"webhook.path\" must start with /")
     if (w.maxBodySize !== undefined && (!Number.isInteger(w.maxBodySize) || w.maxBodySize < 1024)) fail("\"webhook.maxBodySize\" must be a whole number of at least 1024 bytes")
+    if (o.dedupeWindow !== undefined && (!Number.isFinite(o.dedupeWindow) || o.dedupeWindow < 0 || o.dedupeWindow > 11 * 3_600_000)) {
+        fail("\"dedupeWindow\" must be from 0 to 39600000 ms (11 hours)")
+    }
     if (o.post) {
         if (!o.token) fail("\"post\" needs your Top.gg \"token\"")
         if (o.post.interval !== undefined && !(o.post.interval >= MIN_POST_INTERVAL)) {
