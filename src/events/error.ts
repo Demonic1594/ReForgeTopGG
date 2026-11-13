@@ -1,22 +1,10 @@
-import { Interpreter } from "@tryforge/forgescript";
-import { ForgeTopGG } from "..";
-import { TopGGEventHandler } from "../structures/TopGGEventHandlers";
+import { runCommands, TopGGEventHandler } from "../structures/TopGGEventHandlers"
 
 export default new TopGGEventHandler({
     name: "error",
     version: "1.0.0",
-    description: "This event is called when an error occurs",
+    description: "This event is fired when posting stats fails, the webhook cannot start, or Top.gg sends a vote that cannot be used",
     listener(err) {
-        const commands = this.getExtension(ForgeTopGG, true).commands.get("error")
-
-        for (const command of commands) {
-            Interpreter.run({
-                obj: {},
-                client: this,
-                command,
-                data: command.compiled.code,
-                extras: err
-            })
-        }
+        runCommands(this, "error", err)
     },
 })

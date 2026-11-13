@@ -1,4 +1,4 @@
-import { BotStats } from "@top-gg/sdk";
+import { currentStats } from "../../structures/BotStats";
 import { ArgType, NativeFunction } from "@tryforge/forgescript";
 
 export default new NativeFunction({
@@ -8,6 +8,6 @@ export default new NativeFunction({
     unwrap: false,
     output: ArgType.Number,
     execute(ctx) {
-        return this.success((ctx.runtime.extras as BotStats)?.shardCount)
+        return this.success(currentStats(ctx.runtime.extras)?.shardCount)
     },
 })

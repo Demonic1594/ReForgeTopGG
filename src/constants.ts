@@ -1,1 +1,1 @@
-export const TopGGEventManagerName = "TopGGEvents"
+export const TopGGEventManagerName = "ReForgeTopGGEvents"
