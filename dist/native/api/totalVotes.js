@@ -12,7 +12,7 @@ exports.default = new forgescript_1.NativeFunction({
         const id = ctx.client.user?.id;
         if (!id)
             return this.customError("The bot is not logged in yet");
-        const result = await ctx.getExtension(__1.ReForgeTopGG, true).api.request((api) => api.getBot(id));
+        const result = await ctx.getExtension(__1.ReForgeTopGG, true).api.getBot(id);
         if (!result.ok)
             return this.customError(result.error);
         const value = result.value?.points;

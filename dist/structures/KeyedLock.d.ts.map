@@ -1,0 +1,1 @@
+{"version":3,"file":"KeyedLock.d.ts","sourceRoot":"","sources":["../../src/structures/KeyedLock.ts"],"names":[],"mappings":"AAAA;;;;GAIG;AACH,qBAAa,SAAS;IAClB,OAAO,CAAC,QAAQ,CAAC,KAAK,CAAsC;IAE5D,IAAI,IAAI,WAEP;IAED,GAAG,CAAC,CAAC,EAAE,GAAG,EAAE,MAAM,EAAE,IAAI,EAAE,MAAM,OAAO,CAAC,CAAC,CAAC,GAAG,CAAC,GAAG,OAAO,CAAC,CAAC,CAAC;CAU9D"}

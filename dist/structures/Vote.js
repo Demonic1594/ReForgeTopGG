@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.VoteType = exports.VOTE_COOLDOWN = void 0;
 exports.isSnowflake = isSnowflake;
+exports.parseUserId = parseUserId;
 exports.parseQuery = parseQuery;
 exports.normalizeLegacyVote = normalizeLegacyVote;
 exports.normalizeSignedVote = normalizeSignedVote;
@@ -26,17 +27,19 @@ const SNOWFLAKE = /^\d{15,22}$/;
 function isSnowflake(value) {
     return typeof value === "string" && SNOWFLAKE.test(value);
 }
+/** A user ID as people write it in commands: `123...`, ` 123... `, `<@123...>` or `<@!123...>`. */
+function parseUserId(raw) {
+    const id = raw.trim().replace(/^<@!?(\d+)>$/, "$1");
+    return isSnowflake(id) ? id : null;
+}
 function parseQuery(raw) {
     if (raw === undefined || raw === null || raw === "")
         return {};
     if (typeof raw === "string")
         return Object.fromEntries(new URLSearchParams(raw));
     if (typeof raw === "object" && !Array.isArray(raw)) {
-        const out = {};
-        for (const [k, v] of Object.entries(raw))
-            if (typeof v === "string")
-                out[k] = v;
-        return out;
+        // fromEntries defines own properties, so a "__proto__" key stays a plain key
+        return Object.fromEntries(Object.entries(raw).filter((e) => typeof e[1] === "string"));
     }
     throw new Error("query must be a string");
 }

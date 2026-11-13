@@ -9,7 +9,7 @@ exports.default = new forgescript_1.NativeFunction({
     unwrap: false,
     output: forgescript_1.ArgType.Boolean,
     async execute(ctx) {
-        const result = await ctx.getExtension(__1.ReForgeTopGG, true).api.request((api) => api.isWeekend());
+        const result = await ctx.getExtension(__1.ReForgeTopGG, true).api.isWeekend();
         return result.ok ? this.success(!!result.value) : this.customError(result.error);
     },
 });

@@ -7,8 +7,10 @@ const Vote_1 = require("./Vote");
  * voter in vote events, else the author.
  */
 function resolveUser(ctx, arg) {
-    if (arg)
-        return (0, Vote_1.isSnowflake)(arg) ? { ok: true, id: arg } : { ok: false, error: `"${arg}" is not a user ID` };
+    if (arg && arg.trim()) {
+        const id = (0, Vote_1.parseUserId)(arg);
+        return id ? { ok: true, id } : { ok: false, error: `"${arg}" is not a user ID or mention` };
+    }
     const id = (0, Vote_1.currentVote)(ctx.runtime.extras)?.user ?? ctx.user?.id;
     return id ? { ok: true, id } : { ok: false, error: "No user ID given and none in this context" };
 }

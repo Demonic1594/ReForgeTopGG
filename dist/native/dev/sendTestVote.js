@@ -12,7 +12,7 @@ exports.default = new forgescript_1.NativeFunction({
     args: [
         {
             name: "user ID",
-            description: "The voter, defaults to the author",
+            description: "The voter (an ID or a mention), defaults to the author",
             rest: false,
             type: forgescript_1.ArgType.String,
         },

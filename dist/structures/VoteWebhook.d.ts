@@ -18,6 +18,8 @@ export interface IVoteWebhookOptions {
     onVote: (vote: Vote) => unknown;
     /** Called for authenticated deliveries that could not be used. */
     onError?: (err: Error) => void;
+    /** Called for each request refused for a wrong or missing secret or signature. */
+    onRefused?: (reason: string) => void;
     /** Clock, for tests. */
     now?: () => number;
 }

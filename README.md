@@ -66,7 +66,7 @@ Each row was reproduced on 1.1.4 (or read in its source) and has a test in `test
     ```
 
     > ℹ️ **Note**\
-    > The compiled code is committed, so no build step is needed. The command above follows `main`; to pin a release, add its tag, e.g. `npm i github:Demonic1594/ReForgeTopGG#v2.0.0`. All releases are listed under [tags](https://github.com/Demonic1594/ReForgeTopGG/tags).
+    > The compiled code is committed, so no build step is needed. The command above follows `main`; to pin a release, add its tag, e.g. `npm i github:Demonic1594/ReForgeTopGG#v2.1.0`. All releases are listed under [tags](https://github.com/Demonic1594/ReForgeTopGG/tags).
 
 2. Here's an example of how your main file should look:
     ```js
@@ -121,7 +121,7 @@ Both kinds can be enabled at once. Use the dashboard's test button, or `$sendTes
 |---|---|---|
 | `token` | none | Top.gg API token, for posting stats and the API functions |
 | `auth` | none | Legacy webhook Authorization; an empty value is refused |
-| `port` | `3000` | Port of the vote webhook |
+| `port` | `3000` | Port of the vote webhook (a numeric string from `.env` works) |
 | `webhook.secret` | none | v1 webhook secret (`whs_...`); signed deliveries are checked with it |
 | `webhook.path` | `/dblwebhook` | URL path Top.gg posts to |
 | `webhook.host` | all interfaces | Address to listen on |
@@ -174,9 +174,11 @@ The user ID is optional: it defaults to the voter in vote events and to the auth
 #### Top.gg API (needs `token`)
 These fail with an error when the request fails. Use `$try` for a fallback.
 
+Top.gg blocks a token for an hour once it gets more than 60 requests a minute to its bot endpoints, so a spammed `$hasVoted` command could take down your stats posting and every API function. ReForgeTopGG prevents that: identical requests in flight share one call, answers are reused for a short time (a "voted" answer for 60 s, "not voted" for 30 s, vote totals for 60 s, the weekend flag for 5 minutes; a vote reaching the webhook clears that user's answer at once), and at most 50 requests a minute are sent. Beyond that the function fails with "Top.gg API request not sent ... Try again in N s", which `$try` catches.
+
 | Function | Returns |
 |---|---|
-| `$hasVoted[user ID]` | Whether the user voted in the last 12 hours |
+| `$hasVoted[user ID]` | Whether the user voted in the last 12 hours (an ID or a mention) |
 | `$totalVotes` | Total votes of the bot |
 | `$monthlyVotes` | Votes of the bot this month |
 | `$isVoteWeekend` | Whether the weekend multiplier is on |
@@ -250,6 +252,11 @@ Check `$voteType` before giving rewards if your test command is public.
 - Only `POST` with `Content-Type: application/json` on the configured path is accepted.
 - Invalid payloads get `400`; Top.gg does not retry 4xx. Votes that could not be stored get `500`; Top.gg retries those.
 - API errors are passed on with the token removed.
+- Slow clients are cut off: headers within 10 s, the whole request within 15 s (checked every second).
+- A request answered before its body was read (refused) closes its connection, so a client cannot reuse a connection left half-read.
+- Refused requests are never events (anyone can send them) and the secret is never echoed; their number is logged at most once a minute, because a webhook that refuses everything usually means the secret differs from Top.gg's.
+- Two deliveries of one user are stored one after the other, never interleaved; a repeat that arrives while the first delivery is still being stored waits for it, and fails too if it fails, so Top.gg delivers the vote again instead of losing it.
+- A listener that throws (in your JavaScript) is logged; it never fails a stored vote or crashes the bot.
 
 <h3 align="center">Switching from ForgeTopGG</h3><hr>
 
@@ -288,6 +295,8 @@ npm run docgen     # regenerate metadata/*.json
 ```
 
 The tests start a real ForgeClient (it never logs in) with the extension on a random port, send real HTTP requests to the webhook, and run ForgeScript code through the real interpreter. Top.gg is never contacted: the API client is stubbed. The ForgeDB store is tested on SQLite.
+
+`test/fuzz.test.js` is a seeded fuzzer: thousands of mixed requests (valid legacy and signed votes, retries, forged secrets, mutated signatures, broken bodies, wrong types, odd methods, paths and headers) sent in concurrent bursts, checking that each vote is emitted exactly once and the history matches what was accepted; vote histories against a reference model; and every function with hostile arguments. Replay a seed with `FUZZ_SEED=42 npm test`, or run more with `FUZZ_ROUNDS=20000`. `test/robustness.test.js` holds the abuse and race cases found by stress-testing 2.0.0.
 
 #### Releasing
 
