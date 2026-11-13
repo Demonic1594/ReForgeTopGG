@@ -1,24 +1,32 @@
 {
-  "name": "@tryforge/forge.topgg",
-  "version": "1.1.4",
-  "description": "",
+  "name": "@tryforge/reforge.topgg",
+  "version": "2.0.0",
+  "description": "ReForgeTopGG: a hardened Top.gg extension for ForgeScript. Posts bot stats and receives votes safely (required secret, signed v1 webhooks, de-duplicated retries), with vote history, streaks and reminders. Fork of tryforge/ForgeTopGG.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "lint": "tsc --noEmit -p . --noUnusedLocals --noImplicitReturns --noFallthroughCasesInSwitch",
     "test": "tsc && node --test test/*.test.js",
     "docgen": "tsc && node dist/docgen"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Demonic1594/ReForgeTopGG.git"
+  },
   "keywords": [
+    "discord",
+    "extension",
+    "forge",
+    "forgescript",
     "topgg",
     "top.gg",
-    "forgescript",
-    "fs",
-    "sdk",
-    "api",
-    "webhook"
+    "votes",
+    "webhook",
+    "reforge",
+    "reforgetopgg"
   ],
-  "author": "ruben40000",
+  "author": "ruben40000 (original), Demonic1594 (fork)",
   "license": "GPL-3.0",
   "dependencies": {
     "@top-gg/sdk": "^3.1.6",
@@ -32,5 +40,28 @@
     "better-sqlite3": "^12.11.1",
     "discord.js": "^14.28.1",
     "typescript": "^5.9.3"
-  }
+  },
+  "peerDependencies": {
+    "@tryforge/forgescript": ">=2.5.0",
+    "@tryforge/forge.db": "^2.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@tryforge/forge.db": {
+      "optional": true
+    }
+  },
+  "files": [
+    "dist",
+    "metadata",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "bugs": {
+    "url": "https://github.com/Demonic1594/ReForgeTopGG/issues"
+  },
+  "homepage": "https://github.com/Demonic1594/ReForgeTopGG#readme"
 }

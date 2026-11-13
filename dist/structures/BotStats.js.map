@@ -1,0 +1,1 @@
+{"version":3,"file":"BotStats.js","sourceRoot":"","sources":["../../src/structures/BotStats.ts"],"names":[],"mappings":";;AAGA,oCAGC;AAJD,0EAA0E;AAC1E,SAAgB,YAAY,CAAC,MAAe;IACxC,IAAI,CAAC,MAAM,IAAI,OAAO,MAAM,KAAK,QAAQ,IAAI,MAAM,YAAY,KAAK;QAAE,OAAO,SAAS,CAAA;IACtF,OAAO,aAAa,IAAI,MAAM,CAAC,CAAC,CAAE,MAAmB,CAAC,CAAC,CAAC,SAAS,CAAA;AACrE,CAAC"}

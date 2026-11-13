@@ -6,7 +6,13 @@
  */
 export const VOTE_COOLDOWN = 12 * 60 * 60 * 1000
 
-export type VoteType = "upvote" | "test"
+/** The kinds of vote $voteType returns. */
+export enum VoteType {
+    /** A real vote. */
+    upvote = "upvote",
+    /** Sent by the test button on Top.gg or $sendTestVote. */
+    test = "test",
+}
 
 /** A vote as the extension hands it to events and functions. */
 export interface Vote {
@@ -17,7 +23,7 @@ export interface Vote {
     /** Discord ID of the server voted for (server webhooks). */
     guild?: string
     /** `upvote` for a real vote, `test` for the dashboard's test button. */
-    type: VoteType
+    type: `${VoteType}`
     /** Whether the weekend multiplier was active (the vote counts twice). */
     isWeekend: boolean
     /** How many votes this one counts as: 2 on weekends, otherwise 1. */

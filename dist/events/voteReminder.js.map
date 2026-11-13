@@ -1,0 +1,1 @@
+{"version":3,"file":"voteReminder.js","sourceRoot":"","sources":["../../src/events/voteReminder.ts"],"names":[],"mappings":";;AAAA,yEAAiF;AAEjF,kBAAe,IAAI,sCAAiB,CAAC;IACjC,IAAI,EAAE,cAAc;IACpB,OAAO,EAAE,OAAO;IAChB,WAAW,EAAE,oIAAoI;IACjJ,QAAQ,CAAC,IAAI;QACT,IAAA,gCAAW,EAAC,IAAI,EAAE,cAAc,EAAE,IAAI,CAAC,CAAA;IAC3C,CAAC;CACJ,CAAC,CAAA"}
