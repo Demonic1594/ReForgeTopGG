@@ -273,7 +273,7 @@ Both packages cannot be loaded at once: they register the same functions and eve
 - The vote cooldown is 12 hours. Legacy deliveries carry no expiry, so `$nextVoteTime` is the time the vote arrived plus 12 hours; v1 deliveries carry Top.gg's own `expires_at`.
 - Legacy deliveries carry no vote ID, so a repeat is recognised by voter, target and type. A real second vote can only come 12 hours later, outside the 1-hour window.
 - Test votes are collapsed for at most 1 minute, so the test button works again right away.
-- Stats posting uses `topgg-autoposter`: it posts this process's guild count, with `shardId`/`shardCount` from discord.js. It needs `discord.js` to be the same copy ForgeScript uses (a single `npm i` does that).
+- Stats posting starts on discord.js's `clientReady` event (`ready` on discord.js before 14.22) and uses `topgg-autoposter`: it posts this process's guild count, with `shardId`/`shardCount` from discord.js. It needs `discord.js` to be the same copy ForgeScript uses (a single `npm i` does that).
 - The API functions use Top.gg's legacy API through `@top-gg/sdk` 3.x. @top-gg/sdk 4.0.0 (August 2026) moved to the v1 API and is ESM-only; this extension does not use it yet.
 - ForgeScript only logs errors thrown while an extension starts and keeps going, so ReForgeTopGG checks its options when it is created and its conflicts before it starts, where an error does stop the bot.
 

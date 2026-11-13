@@ -90,6 +90,12 @@ export type IForgeTopGGOptions = IReForgeTopGGOptions;
 export type TransformEvents<T> = {
     [P in keyof T]: T[P] extends any[] ? (...args: T[P]) => any : never;
 };
+/**
+ * The client's ready event. discord.js 14.22+ emits "clientReady" and prints a deprecation warning
+ * when anything listens to "ready" (gone in v15); older versions only emit "ready". Events.ClientReady
+ * holds the right name for the installed version.
+ */
+export declare function readyEventName(): string;
 export declare class ReForgeTopGG extends ForgeExtension {
     readonly options: IReForgeTopGGOptions;
     name: string;

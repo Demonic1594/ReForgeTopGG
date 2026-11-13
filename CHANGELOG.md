@@ -25,6 +25,8 @@ Every fix below was reproduced on 1.1.4 (or read in its source, or in @top-gg/sd
 - `$hasVoted` took a `User` argument, so ForgeScript fetched the user from Discord before Top.gg was asked; it takes the ID as text now and refuses anything that is not an ID.
 - `$voteUserID`, `$voteQuery`, `$postedServerCount` and the other event functions read whatever data the current event had; they return nothing outside their own events.
 - Loading ForgeTopGG and ReForgeTopGG together is refused at start-up: both register the same functions and events.
+- Stats posting waited for discord.js's `ready` event (1.1.4 did too). discord.js 14.22 and newer emit `clientReady`, print a deprecation warning when anything listens to `ready`, and v15 drops it. Posting and the restoring of reminders now wait for `clientReady` when the installed discord.js has it.
+- `client.destroy()` right after the bot became ready left topgg-autoposter's interval running (it starts one microtask after it is created), so the process could not exit. A closed extension's poster never starts.
 
 ### Added
 - **Signed (v1) webhooks**: `webhook.secret` checks Top.gg's `x-topgg-signature` (HMAC SHA-256 of the timestamp and raw body, constant-time, 5-minute window). `vote.create` and `webhook.test` become the same vote as legacy deliveries; repeats collapse by vote ID.
@@ -34,7 +36,7 @@ Every fix below was reproduced on 1.1.4 (or read in its source, or in @top-gg/sd
 - `webhook.listen: false` and `webhookListener` to mount the webhook on your own server; `webhook.path` and `webhook.host`.
 - `sendTestVote()` and `receive()` in JavaScript, for development and tests.
 - `metadata/` with functions, events and the `VoteType` enum, generated from the sources.
-- A test suite (`npm test`, 60 tests) and CI on Node 20 and 22, plus ForgeScript 2.5.0.
+- A test suite (`npm test`, 61 tests) and CI on Node 20 and 22, plus ForgeScript 2.5.0.
 
 ### Changed
 - Dropped the `@tryforge/webserver` dependency (and with it express); the webhook is a small `node:http` handler.

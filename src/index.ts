@@ -102,6 +102,19 @@ export type TransformEvents<T> = {
     [P in keyof T]: T[P] extends any[] ? (...args: T[P]) => any : never
 }
 
+/**
+ * The client's ready event. discord.js 14.22+ emits "clientReady" and prints a deprecation warning
+ * when anything listens to "ready" (gone in v15); older versions only emit "ready". Events.ClientReady
+ * holds the right name for the installed version.
+ */
+export function readyEventName(): string {
+    try {
+        return require("discord.js").Events?.ClientReady ?? "ready"
+    } catch {
+        return "ready"
+    }
+}
+
 /** Names of extensions that register the same functions and cannot run alongside. */
 const CONFLICTING_EXTENSIONS = ["forge.topgg"]
 
@@ -196,10 +209,16 @@ export class ReForgeTopGG extends ForgeExtension {
 
         if (this.options.post) {
             const post = this.options.post
-            this.client.once("ready", (ready) => {
+            this.client.once(readyEventName() as "ready", (ready) => {
                 if (this.closed || this.poster) return
                 try {
                     const poster = autoPoster(this.options.token!, ready, post)
+                    // topgg-autoposter starts its interval a microtask after it is created; a close()
+                    // in between would stop nothing and the interval would keep the process alive.
+                    const start = poster.start.bind(poster)
+                    poster.start = () => {
+                        if (!this.closed) start()
+                    }
                     poster.on("error", (err) => this.emitError(err))
                     poster.on("posted", (stats) => this.emitter.emit("posted", stats))
                     this.poster = poster
@@ -214,7 +233,7 @@ export class ReForgeTopGG extends ForgeExtension {
 
         if (this.reminders && this.store.pending) {
             // Reschedule reminders a persistent store still holds.
-            this.client.once("ready", () => void this.restoreReminders())
+            this.client.once(readyEventName() as "ready", () => void this.restoreReminders())
         }
 
         // ForgeExtension has no shutdown hook: close with the client.

@@ -15,6 +15,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ForgeTopGG = exports.ReForgeTopGG = exports.DEFAULT_STREAK_GRACE = exports.DEFAULT_DEDUPE_WINDOW = exports.DEFAULT_PATH = exports.DEFAULT_PORT = exports.MIN_POST_INTERVAL = void 0;
+exports.readyEventName = readyEventName;
 const forgescript_1 = require("@tryforge/forgescript");
 const http_1 = require("http");
 const topgg_autoposter_1 = require("topgg-autoposter");
@@ -41,6 +42,19 @@ exports.DEFAULT_PATH = "/dblwebhook";
 exports.DEFAULT_DEDUPE_WINDOW = 3_600_000;
 /** A streak continues when the next vote comes at most this long after the user could vote again. */
 exports.DEFAULT_STREAK_GRACE = 12 * 3_600_000;
+/**
+ * The client's ready event. discord.js 14.22+ emits "clientReady" and prints a deprecation warning
+ * when anything listens to "ready" (gone in v15); older versions only emit "ready". Events.ClientReady
+ * holds the right name for the installed version.
+ */
+function readyEventName() {
+    try {
+        return require("discord.js").Events?.ClientReady ?? "ready";
+    }
+    catch {
+        return "ready";
+    }
+}
 /** Names of extensions that register the same functions and cannot run alongside. */
 const CONFLICTING_EXTENSIONS = ["forge.topgg"];
 class ReForgeTopGG extends forgescript_1.ForgeExtension {
@@ -126,11 +140,18 @@ class ReForgeTopGG extends forgescript_1.ForgeExtension {
             this.client.events.load(constants_1.TopGGEventManagerName, this.options.events);
         if (this.options.post) {
             const post = this.options.post;
-            this.client.once("ready", (ready) => {
+            this.client.once(readyEventName(), (ready) => {
                 if (this.closed || this.poster)
                     return;
                 try {
                     const poster = (0, topgg_autoposter_1.AutoPoster)(this.options.token, ready, post);
+                    // topgg-autoposter starts its interval a microtask after it is created; a close()
+                    // in between would stop nothing and the interval would keep the process alive.
+                    const start = poster.start.bind(poster);
+                    poster.start = () => {
+                        if (!this.closed)
+                            start();
+                    };
                     poster.on("error", (err) => this.emitError(err));
                     poster.on("posted", (stats) => this.emitter.emit("posted", stats));
                     this.poster = poster;
@@ -146,7 +167,7 @@ class ReForgeTopGG extends forgescript_1.ForgeExtension {
             forgescript_1.Logger.info("ReForgeTopGG: no webhook auth or secret set, vote webhook is off");
         if (this.reminders && this.store.pending) {
             // Reschedule reminders a persistent store still holds.
-            this.client.once("ready", () => void this.restoreReminders());
+            this.client.once(readyEventName(), () => void this.restoreReminders());
         }
         // ForgeExtension has no shutdown hook: close with the client.
         const destroy = client.destroy.bind(client);

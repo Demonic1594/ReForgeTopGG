@@ -78,7 +78,7 @@ test("pending reminders of a persistent store are rescheduled on ready", async (
     clients.push(b.client)
     const reminders = []
     b.top.emitter.on("voteReminder", (v) => reminders.push(v))
-    b.client.emit("ready", b.client)
+    b.client.emit("clientReady", b.client)
     await new Promise((r) => setTimeout(r, 100))
     assert.equal(reminders.length, 1)
 })
