@@ -123,23 +123,30 @@ export class ForgeDBVoteStore implements VoteStore {
 
     constructor(public readonly variable = "topggVote", private readonly load = () => require("@tryforge/forge.db/dist/util").DataBase as ForgeDBDataBase) {}
 
-    private database(): ForgeDBDataBase {
+    /**
+     * ForgeDB opens its database in the background after the bot starts. Wait for
+     * it: briefly for a vote (the webhook must answer Top.gg within 5 s, and a
+     * failure makes Top.gg deliver it again), longer when restoring reminders.
+     */
+    private async database(waitMs: number): Promise<ForgeDBDataBase> {
         this.db ??= this.load()
-        if (!(this.db as unknown as { db?: unknown }).db) throw new Error("ForgeDB is not connected yet")
+        const connected = () => !!(this.db as unknown as { db?: unknown }).db
+        for (const until = Date.now() + waitMs; !connected() && Date.now() < until;) await new Promise((r) => setTimeout(r, 50))
+        if (!connected()) throw new Error("ForgeDB is not connected yet")
         return this.db
     }
 
     async get(user: string) {
-        const row = await this.database().get({ type: "user", name: this.variable, id: user })
+        const row = await (await this.database(3_000)).get({ type: "user", name: this.variable, id: user })
         return row ? parseRecord(row.value) : undefined
     }
 
     async set(record: VoteRecord) {
-        await this.database().set({ type: "user", name: this.variable, id: record.user, value: JSON.stringify(record) })
+        await (await this.database(3_000)).set({ type: "user", name: this.variable, id: record.user, value: JSON.stringify(record) })
     }
 
     async pending() {
-        const rows = await this.database().find({ type: "user", name: this.variable })
+        const rows = await (await this.database(60_000)).find({ type: "user", name: this.variable })
         return rows.map((r) => parseRecord(r.value)).filter((r): r is VoteRecord => !!r && !r.reminded)
     }
 }

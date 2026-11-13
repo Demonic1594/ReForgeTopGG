@@ -6,7 +6,7 @@ const { boot, run, logs, USER } = require("./fixtures/harness")
 
 let ctx
 const original = Api.prototype._request
-beforeEach(() => { Api.prototype._request = original })
+beforeEach(() => { Api.prototype._request = original; ctx?.top.api.clearCache() })
 after(async () => { Api.prototype._request = original; await ctx?.client.destroy() })
 
 async function client() {
@@ -44,6 +44,7 @@ test("$totalVotes and $monthlyVotes report failures and return numbers on succes
     assert.equal(await run(c, "$totalVotes"), "42")
     assert.equal(await run(c, "$monthlyVotes"), "7")
     Api.prototype._request = async () => { throw new Error("401 Unauthorized") }
+    ctx.top.api.clearCache() // answers are reused for a minute
     assert.equal(await run(c, "$totalVotes"), null)
     assert.equal(await run(c, "$try[$monthlyVotes;n/a]"), "n/a")
 })

@@ -1,6 +1,6 @@
 import { ArgType, NativeFunction } from "@tryforge/forgescript"
 import { ReForgeTopGG } from "../.."
-import { isSnowflake } from "../../structures/Vote"
+import { parseUserId } from "../../structures/Vote"
 
 export default new NativeFunction({
     name: "$hasVoted",
@@ -11,7 +11,7 @@ export default new NativeFunction({
     args: [
         {
             name: "user ID",
-            description: "The user to check",
+            description: "The user to check: an ID or a mention",
             rest: false,
             required: true,
             type: ArgType.String,
@@ -19,8 +19,9 @@ export default new NativeFunction({
     ],
     output: ArgType.Boolean,
     async execute(ctx, [user]) {
-        if (!isSnowflake(user)) return this.customError(`"${user}" is not a user ID`)
-        const result = await ctx.getExtension(ReForgeTopGG, true).api.request((api) => api.hasVoted(user))
+        const id = parseUserId(user)
+        if (!id) return this.customError(`"${user}" is not a user ID or mention`)
+        const result = await ctx.getExtension(ReForgeTopGG, true).api.hasVoted(id)
         return result.ok ? this.success(result.value) : this.customError(result.error)
     },
 })

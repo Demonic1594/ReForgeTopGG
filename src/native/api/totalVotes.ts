@@ -10,7 +10,7 @@ export default new NativeFunction({
     async execute(ctx) {
         const id = ctx.client.user?.id
         if (!id) return this.customError("The bot is not logged in yet")
-        const result = await ctx.getExtension(ReForgeTopGG, true).api.request((api) => api.getBot(id))
+        const result = await ctx.getExtension(ReForgeTopGG, true).api.getBot(id)
         if (!result.ok) return this.customError(result.error)
         const value = result.value?.points
         return typeof value === "number" ? this.success(value) : this.customError("Top.gg API returned no points")
