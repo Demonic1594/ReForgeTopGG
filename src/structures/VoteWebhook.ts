@@ -1,13 +1,17 @@
-import { createHash, timingSafeEqual } from "crypto"
+import { createHash, createHmac, timingSafeEqual } from "crypto"
 import type { IncomingMessage, ServerResponse } from "http"
-import { normalizeLegacyVote, Vote } from "./Vote"
+import { normalizeLegacyVote, normalizeSignedVote, Vote } from "./Vote"
 
 /** Default largest request body accepted, in bytes. A vote is well under 1 KiB. */
 export const DEFAULT_MAX_BODY_SIZE = 16 * 1024
+/** Signed deliveries older or newer than this are refused (Top.gg's docs: 5 minutes). */
+export const SIGNATURE_TOLERANCE = 5 * 60 * 1000
 
 export interface IVoteWebhookOptions {
     /** The legacy (v0) secret Top.gg sends in the `Authorization` header. */
     auth?: string
+    /** The v1 webhook secret (`whs_...`) Top.gg signs deliveries with. */
+    secret?: string
     /** Largest accepted body in bytes. */
     maxBodySize?: number
     /**
@@ -37,6 +41,35 @@ export function safeEqual(received: string | undefined, expected: string): boole
     const a = createHash("sha256").update(received).digest()
     const b = createHash("sha256").update(expected).digest()
     return timingSafeEqual(a, b)
+}
+
+/**
+ * Checks a v1 `x-topgg-signature` header (`t=<unix seconds>,v1=<hex>`):
+ * an HMAC SHA-256 of `<t>.<raw body>` keyed with the secret, compared in
+ * constant time, and a timestamp within {@link SIGNATURE_TOLERANCE}.
+ * Returns the reason it fails, or `null` when it is valid.
+ */
+export function checkSignature(headerValue: string, raw: Buffer, secret: string, now: number): string | null {
+    const parts: Record<string, string> = {}
+    for (const part of headerValue.split(",")) {
+        const i = part.indexOf("=")
+        if (i > 0) parts[part.slice(0, i).trim()] = part.slice(i + 1).trim()
+    }
+    const t = Number(parts.t)
+    const sig = parts.v1
+    if (!Number.isInteger(t) || !sig || !/^[0-9a-f]+$/i.test(sig)) return "Invalid signature format"
+    if (Math.abs(now - t * 1000) > SIGNATURE_TOLERANCE) return "Signature timestamp outside the accepted window"
+    const expected = createHmac("sha256", secret).update(`${parts.t}.`).update(raw).digest()
+    const given = Buffer.from(sig, "hex")
+    if (given.length !== expected.length || !timingSafeEqual(given, expected)) return "Invalid signature"
+    return null
+}
+
+/** Signs a body the way Top.gg does, for tests and local development. */
+export function signBody(raw: string | Buffer, secret: string, now = Date.now()): string {
+    const t = Math.floor(now / 1000)
+    const sig = createHmac("sha256", secret).update(`${t}.`).update(raw).digest("hex")
+    return `t=${t},v1=${sig}`
 }
 
 /** Reads the request body, refusing anything larger than `limit` bytes. */
@@ -113,8 +146,9 @@ export class VoteWebhook {
             return send(res, 405, { error: "Method not allowed" })
         }
 
-        const auth = this.options.auth
-        if (!auth || !safeEqual(header(req, "authorization"), auth)) {
+        const signature = header(req, "x-topgg-signature")
+        const signed = signature !== undefined
+        if (signed ? !this.options.secret : !this.options.auth || !safeEqual(header(req, "authorization"), this.options.auth)) {
             req.resume()
             return send(res, 401, { error: "Unauthorized" })
         }
@@ -128,6 +162,10 @@ export class VoteWebhook {
         let body: unknown
         const parsed = (req as IncomingMessage & { body?: unknown }).body
         if (req.readableEnded && parsed && typeof parsed === "object") {
+            if (signed) {
+                this.options.onError?.(new Error("A signed Top.gg delivery reached the webhook after a body parser read it, so its signature cannot be checked. Mount the webhook listener before express.json()."))
+                return send(res, 500, { error: "Body already consumed" })
+            }
             // Mounted behind a body parser (e.g. express.json()) that already read it.
             body = parsed
         } else {
@@ -138,6 +176,10 @@ export class VoteWebhook {
                 const e = err as WebhookRequestError
                 return send(res, e.status ?? 400, { error: e.message })
             }
+            if (signed) {
+                const failure = checkSignature(signature, raw, this.options.secret!, this.now())
+                if (failure) return send(res, 401, { error: failure })
+            }
             try {
                 body = JSON.parse(raw.toString("utf8"))
             } catch {
@@ -145,15 +187,18 @@ export class VoteWebhook {
             }
         }
 
-        let vote: Vote
+        let vote: Vote | null
         try {
-            vote = normalizeLegacyVote(body, this.now())
+            vote = signed ? normalizeSignedVote(body, this.now()) : normalizeLegacyVote(body, this.now())
         } catch (err) {
             const message = (err as Error).message
             this.options.onError?.(new Error(`Top.gg sent a vote that could not be used: ${message}`))
             // 4xx: Top.gg does not retry a delivery that can never succeed.
             return send(res, 400, { error: message })
         }
+
+        // Signed event types other than votes are acknowledged and ignored.
+        if (!vote) return send(res, 204)
 
         try {
             await this.options.onVote(vote)

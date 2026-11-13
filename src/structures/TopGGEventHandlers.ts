@@ -7,6 +7,7 @@ export interface ITopGGEvents {
     posted: [BotStats]
     error: [Error]
     voted: [Vote]
+    voteReminder: [Vote]
 }
 
 export class TopGGEventHandler<T extends keyof ITopGGEvents> extends BaseEventHandler<ITopGGEvents, T> {

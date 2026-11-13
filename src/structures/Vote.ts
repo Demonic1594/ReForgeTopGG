@@ -79,6 +79,49 @@ export function normalizeLegacyVote(body: unknown, now: number): Vote {
     }
 }
 
+/**
+ * Validates a signed (v1) webhook body and turns it into a {@link Vote}.
+ * Returns `null` for event types that are not votes (they are acknowledged
+ * and ignored). Throws with a short reason when the body is not usable.
+ */
+export function normalizeSignedVote(body: unknown, now: number): Vote | null {
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("body must be a JSON object")
+    const b = body as { type?: unknown; data?: any }
+    if (b.type !== "vote.create" && b.type !== "webhook.test") return null
+    const d = b.data
+    if (!d || typeof d !== "object") throw new Error("data is missing")
+    const user = d.user?.platform_id
+    if (!isSnowflake(user)) throw new Error("data.user.platform_id must be a Discord ID")
+    const project = d.project
+    const target = project?.platform_id
+    if (!isSnowflake(target)) throw new Error("data.project.platform_id must be a Discord ID")
+    if (project.type !== "bot" && project.type !== "server") throw new Error("data.project.type must be bot or server")
+    const isVote = b.type === "vote.create"
+    let votedAt = now
+    let expiresAt = now + VOTE_COOLDOWN
+    let weight = 1
+    if (isVote) {
+        if (typeof d.id !== "string" || d.id === "") throw new Error("data.id is missing")
+        votedAt = Date.parse(d.created_at)
+        expiresAt = Date.parse(d.expires_at)
+        if (!Number.isFinite(votedAt) || !Number.isFinite(expiresAt)) throw new Error("data.created_at and data.expires_at must be dates")
+        weight = d.weight
+        if (!Number.isInteger(weight) || weight < 1) throw new Error("data.weight must be a positive whole number")
+    }
+    return {
+        user,
+        ...(project.type === "server" ? { guild: target } : { bot: target }),
+        type: isVote ? "upvote" : "test",
+        isWeekend: weight > 1,
+        weight,
+        query: isVote ? parseQuery(d.query) : {},
+        votedAt,
+        expiresAt,
+        ...(isVote ? { id: d.id } : {}),
+        source: "v1",
+    }
+}
+
 /** The ID of what was voted for: the bot or the server. */
 export function voteTarget(vote: Vote): string {
     return (vote.bot ?? vote.guild)!

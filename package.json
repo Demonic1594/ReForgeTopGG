@@ -29,6 +29,7 @@
     "@tryforge/forge.db": "^2.1.1",
     "@tryforge/forgescript": "^2.8.0",
     "@types/node": "^22.20.5",
+    "better-sqlite3": "^12.11.1",
     "discord.js": "^14.28.1",
     "typescript": "^5.9.3"
   }
