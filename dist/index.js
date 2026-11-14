@@ -27,6 +27,7 @@ const TopGGCommandManager_1 = require("./structures/TopGGCommandManager");
 const VoteWebhook_1 = require("./structures/VoteWebhook");
 const Vote_1 = require("./structures/Vote");
 const VoteStore_1 = require("./structures/VoteStore");
+const DatabaseReminder_1 = require("./structures/DatabaseReminder");
 const Reminders_1 = require("./structures/Reminders");
 const TopGGApi_1 = require("./structures/TopGGApi");
 const Dedupe_1 = require("./structures/Dedupe");
@@ -39,6 +40,7 @@ __exportStar(require("./structures/Dedupe"), exports);
 __exportStar(require("./structures/KeyedLock"), exports);
 __exportStar(require("./structures/VoteStore"), exports);
 __exportStar(require("./structures/Reminders"), exports);
+__exportStar(require("./structures/DatabaseReminder"), exports);
 __exportStar(require("./structures/Logger"), exports);
 /** Top.gg refuses to be posted to more often than every 15 minutes. */
 exports.MIN_POST_INTERVAL = 900_000;
@@ -101,8 +103,8 @@ class ReForgeTopGG extends forgescript_1.ForgeExtension {
             Logger_1.ReForgeTopGGLogger.level = options.logLevel;
         this.options = options;
         this.api = new TopGGApi_1.TopGGApi(options.token ?? undefined);
-        this.store = options.store === "forgedb"
-            ? new VoteStore_1.ForgeDBVoteStore(options.storeVariable)
+        this.store = isDatabaseStore(options.store)
+            ? new VoteStore_1.DatabaseVoteStore(options.storeVariable)
             : typeof options.store === "object" ? options.store : new VoteStore_1.MemoryVoteStore();
         this.reminders = options.reminders ? new Reminders_1.ReminderScheduler((user, expiresAt) => void this.remind(user, expiresAt)) : null;
         this.webhook = this.webhookEnabled
@@ -164,13 +166,18 @@ class ReForgeTopGG extends forgescript_1.ForgeExtension {
         if (unknown.length) {
             throw new Error((0, Logger_1.prefixed)(`Unknown event${unknown.length > 1 ? "s" : ""} ${unknown.map((e) => `"${e}"`).join(", ")} in "events". The events are ${exports.TOPGG_EVENTS.join(", ")}.`));
         }
-        if (this.options.store === "forgedb" && !client.options.extensions?.some((x) => x.name === "forge.db")) {
-            throw new Error((0, Logger_1.prefixed)("Store \"forgedb\" needs the ForgeDB extension (npm i @tryforge/forge.db, then add new ForgeDB() to your extensions)."));
+        if (isDatabaseStore(this.options.store) && !(0, VoteStore_1.loadedDatabaseExtensions)(client).length) {
+            throw new Error((0, Logger_1.prefixed)(`Store "${this.options.store}" needs a database extension: add new ReForgeDB() (npm i github:Demonic1594/ReForgeDB) or new ForgeDB() (npm i @tryforge/forge.db) to your extensions.`));
         }
+        // ForgeDB without ReForgeDB: remind once (shared with the other ReForge extensions).
+        if ((0, VoteStore_1.loadedDatabaseExtensions)(client)[0]?.name === "forge.db")
+            (0, DatabaseReminder_1.remindToSwitch)();
         super.validateAndInit(client);
     }
     init(client) {
         this.client = client;
+        if (this.store instanceof VoteStore_1.DatabaseVoteStore)
+            this.store.attach(client);
         this.commands = new TopGGCommandManager_1.TopGGCommandManager(client);
         forgescript_1.EventManager.load(constants_1.TopGGEventManagerName, __dirname + "/events");
         this.load(__dirname + "/native");
@@ -490,6 +497,10 @@ function normalizeOptions(raw) {
     }
     return o;
 }
+/** Whether `store` names the database store (`"reforgedb"`, or `"forgedb"` as before 3.1.0). */
+function isDatabaseStore(store) {
+    return store === "reforgedb" || store === "forgedb";
+}
 function validateOptions(o) {
     const fail = (msg) => { throw new Error((0, Logger_1.prefixed)(msg)); };
     if (o.logLevel !== undefined && !(0, Logger_1.isLogLevel)(o.logLevel))
@@ -508,8 +519,8 @@ function validateOptions(o) {
     const w = o.webhook || {};
     if (w.secret !== undefined && (typeof w.secret !== "string" || w.secret.trim() === ""))
         fail("\"webhook.secret\" is empty. Set it to the secret shown on your project's Webhooks page on Top.gg, or remove it.");
-    if (o.store !== undefined && o.store !== "memory" && o.store !== "forgedb" && !(o.store && typeof o.store === "object" && typeof o.store.get === "function" && typeof o.store.set === "function")) {
-        fail("\"store\" must be \"memory\", \"forgedb\" or an object with get and set methods");
+    if (o.store !== undefined && o.store !== "memory" && !isDatabaseStore(o.store) && !(o.store && typeof o.store === "object" && typeof o.store.get === "function" && typeof o.store.set === "function")) {
+        fail("\"store\" must be \"memory\", \"reforgedb\" (or \"forgedb\") or an object with get and set methods");
     }
     if (o.streakGrace !== undefined && (!Number.isFinite(o.streakGrace) || o.streakGrace < 0))
         fail("\"streakGrace\" must be a number of ms, 0 or more");

@@ -35,7 +35,7 @@ ReForgeTopGG is a hardened Top.gg extension for ForgeScript. Post your bot's ser
 - **Each vote once.** Top.gg delivers a vote again when it gets no answer in time; repeats are dropped, so rewards are not handed out twice.
 - **No surprises in production.** Nothing listens until the extension starts, a port in use is an error event instead of a crash, and `client.destroy()` closes the server.
 - **Honest API answers.** `$hasVoted` fails with an error when Top.gg can't be reached, instead of returning something that looks like "not voted" (or, with `==false`, like "voted").
-- **Vote history.** Count, weekend points, streaks, last and next vote time, kept in memory or in ForgeDB, plus a reminder event when someone can vote again.
+- **Vote history.** Count, weekend points, streaks, last and next vote time, kept in memory or in ReForgeDB / ForgeDB, plus a reminder event when someone can vote again.
 - **Test without Top.gg.** `$sendTestVote` sends a vote through your own webhook, exactly like Top.gg does.
 
 <details>
@@ -68,7 +68,7 @@ Each row was reproduced on 1.1.4 (or read in its source) and has a test in `test
     ```
 
     > ℹ️ **Note**\
-    > The compiled code is committed, so no build step is needed. The command above follows `main`; to pin a release, add its tag, e.g. `npm i github:Demonic1594/ReForgeTopGG#v2.1.0`. All releases are listed under [tags](https://github.com/Demonic1594/ReForgeTopGG/tags).
+    > The compiled code is committed, so no build step is needed. The command above follows `main`; to pin a release, add its tag, e.g. `npm i github:Demonic1594/ReForgeTopGG#v3.1.0`. All releases are listed under [tags](https://github.com/Demonic1594/ReForgeTopGG/tags).
 
 2. Here's an example of how your main file should look:
     ```js
@@ -105,7 +105,7 @@ Each row was reproduced on 1.1.4 (or read in its source) and has a test in `test
     ```
 
     > ℹ️ **Note**\
-    > `@tryforge/forgescript` is a peer dependency (2.5.0 or newer). `@tryforge/forge.db` is only needed for `store: "forgedb"`.
+    > `@tryforge/forgescript` is a peer dependency (2.5.0 or newer). A database extension, [ReForgeDB](https://github.com/Demonic1594/ReForgeDB) (`npm i github:Demonic1594/ReForgeDB`) or ForgeDB (`npm i @tryforge/forge.db`), is only needed for `store: "reforgedb"`.
 
 <h3 align="center">Setting up Top.gg</h3><hr>
 
@@ -133,8 +133,8 @@ Both kinds can be enabled at once. Use the dashboard's test button, or `$sendTes
 | `post` | off | Post the server count: `{ interval }` in ms, at least `900000` (15 minutes); needs `token` |
 | `events` | `[]` | Events your commands listen to |
 | `dedupeWindow` | `3600000` | A repeat of the same vote within this many ms is dropped; `0` turns it off; at most 11 hours |
-| `store` | `"memory"` | Vote history: `"memory"`, `"forgedb"` or your own `{ get, set, pending? }` |
-| `storeVariable` | `topggVote` | ForgeDB user variable used by `store: "forgedb"` |
+| `store` | `"memory"` | Vote history: `"memory"`, `"reforgedb"` (`"forgedb"` is the same) or your own `{ get, set, pending? }` |
+| `storeVariable` | `topggVote` | User variable used by `store: "reforgedb"` |
 | `streakGrace` | `43200000` | A vote continues the streak when it comes at most this long (12 hours) after the user could vote again |
 | `reminders` | `false` | Fire `voteReminder` when a voter can vote again |
 | `reminderMaxDelay` | `43200000` | A reminder that came due while the bot was offline is still sent after a restart if it is at most this late (12 hours); older ones are dropped. At least `60000` |
@@ -232,14 +232,14 @@ topgg.commands.add({
 Every `upvote` the webhook accepts is recorded for its voter: count, weekend points, streak, first, last and next vote time. Test votes are not recorded.
 
 - **`store: "memory"`** (default) keeps up to 100,000 users and forgets everything on restart.
-- **`store: "forgedb"`** keeps one JSON value per user in the ForgeDB user variable `topggVote` (readable with `$getUserVar[topggVote;<user ID>]`). Add `new ForgeDB()` to your extensions; ReForgeTopGG refuses to start without it.
+- **`store: "reforgedb"`** keeps one JSON value per user in the user variable `topggVote` (readable with `$getUserVar[topggVote;<user ID>]`) of the database extension your bot loaded: ReForgeDB, or the original ForgeDB. `store: "forgedb"` does the same, so 3.0.0 configurations keep working. Add `new ReForgeDB()` or `new ForgeDB()` to your extensions, before or after ReForgeTopGG; ReForgeTopGG refuses to start without one. Load only one of them (they add the same functions); with both, vote history goes to ReForgeDB and a warning is logged. With ForgeDB alone, a one-time reminder to consider switching to ReForgeDB is logged at start-up (shared with the other ReForge extensions, so a bot sees it once); `logLevel: "warn"` hides it.
 - **Your own store:** pass an object with `get(user)`, `set(record)` and optionally `pending()` (records whose reminder is not sent yet, to reschedule reminders after a restart).
 
 If writing a vote fails, the webhook answers `500` so Top.gg delivers it again, and the `error` event fires.
 
 A **streak** grows by one when a vote comes at most `streakGrace` (12 hours by default) after the user could vote again, i.e. at most 24 hours after their previous vote. `$voteStreak` reads `0` once that time has passed.
 
-**Reminders** (`reminders: true`) fire `voteReminder` once, when the 12 hours of a vote are over. A newer vote moves the reminder. With a store that has `pending()` (memory and ForgeDB do), reminders that were still due are scheduled again when the bot is ready.
+**Reminders** (`reminders: true`) fire `voteReminder` once, when the 12 hours of a vote are over. A newer vote moves the reminder. With a store that has `pending()` (memory and the database store do), reminders that were still due are scheduled again when the bot is ready.
 
 A reminder that came due while the bot was offline is sent when the bot is back, if it is at most `reminderMaxDelay` (12 hours) late. Older ones are dropped and marked as sent, and their number is logged: a bot that was off for a week, or that turns `reminders` on for the first time with a long history in its store, does not send a flood of "you can vote again" messages about votes from long ago.
 
@@ -304,6 +304,8 @@ Both packages cannot be loaded at once: they register the same functions and eve
 
 <h3 align="center">Upgrading from 2.x</h3><hr>
 
+**3.1.0** needs no changes. `store: "forgedb"` keeps working and now also works with [ReForgeDB](https://github.com/Demonic1594/ReForgeDB); `"reforgedb"` is the new name. Switching from ForgeDB to ReForgeDB with your vote history: see "Switching from ForgeDB" in ReForgeDB's README (your variables, `topggVote` included, carry over). `ForgeDBVoteStore` is now called `DatabaseVoteStore`; the old name still works.
+
 3.0.0 changes three things your code may notice; options, commands, events and functions are otherwise the same.
 
 1. **The `ForgeTopGG` and `IForgeTopGGOptions` names are gone.** Use `ReForgeTopGG` and `IReForgeTopGGOptions`. `require("@tryforge/reforge.topgg").ForgeTopGG` is `undefined` now, so `new ForgeTopGG(...)` fails with "ForgeTopGG is not a constructor".
@@ -331,7 +333,7 @@ npm test           # build, then run all tests
 npm run docgen     # regenerate metadata/*.json
 ```
 
-The tests start a real ForgeClient (it never logs in) with the extension on a random port, send real HTTP requests to the webhook, and run ForgeScript code through the real interpreter. Top.gg is never contacted: the API client is stubbed. The ForgeDB store is tested on SQLite.
+The tests start a real ForgeClient (it never logs in) with the extension on a random port, send real HTTP requests to the webhook, and run ForgeScript code through the real interpreter. Top.gg is never contacted: the API client is stubbed. The database store is tested on SQLite with ReForgeDB, with ForgeDB, and with both loaded.
 
 `test/fuzz.test.js` is a seeded fuzzer: thousands of mixed requests (valid legacy and signed votes, retries, forged secrets, mutated signatures, broken bodies, wrong types, odd methods, paths and headers) sent in concurrent bursts, checking that each vote is emitted exactly once and the history matches what was accepted; vote histories against a reference model; and every function with hostile arguments. Replay a seed with `FUZZ_SEED=42 npm test`, or run more with `FUZZ_ROUNDS=20000`. `test/robustness.test.js` holds the abuse and race cases found by stress-testing 2.0.0, and `test/v3.test.js` the fixes and conventions of 3.0.0.
 
@@ -345,6 +347,8 @@ The tests start a real ForgeClient (it never logs in) with the extension on a ra
     git tag -a v<x.y.z> -m "ReForgeTopGG <x.y.z>"
     git push origin v<x.y.z>
     ```
+
+    Pushing the tag publishes the GitHub release (`.github/workflows/release.yml`). Its notes come from `.github/release-notes/v<x.y.z>.md` if that file exists, otherwise from the version's section of `CHANGELOG.md`. The workflow refuses a tag that does not match the `package.json` version.
 
 <h3 align="center">Credits and License</h3><hr>
 

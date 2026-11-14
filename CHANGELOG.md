@@ -1,5 +1,25 @@
 # Changelog
 
+## 3.1.0 (November 2026)
+
+Tag [`v3.1.0`](https://github.com/Demonic1594/ReForgeTopGG/releases/tag/v3.1.0) · [all changes since 3.0.0](https://github.com/Demonic1594/ReForgeTopGG/compare/v3.0.0...v3.1.0) · [upgrade notes](README.md#upgrading-from-2x)
+
+Vote history works with [ReForgeDB](https://github.com/Demonic1594/ReForgeDB) as well as ForgeDB. Nothing to change in your bot.
+
+### Added
+- **ReForgeDB support.** The database store keeps vote history in the user variables of whichever of ReForgeDB and ForgeDB the bot loaded, ReForgeDB when both are (with a warning to keep only one). Before, `store: "forgedb"` refused to start without an extension named `forge.db` and always loaded ForgeDB's own module.
+- `store: "reforgedb"`. `"forgedb"` is the same store, kept for 3.0.0 configurations.
+- With ForgeDB alone, a one-time reminder at start-up to consider switching to ReForgeDB (your data is used as it is), with a link to the switching guide. It is shown once per process, shared with the other ReForge extensions (ReForgeGiveaways 2.3.0 and newer) through a global symbol, and `logLevel: "warn"` hides it. `remindToSwitch` is exported.
+- `DatabaseVoteStore`, `resolveDataBase`, `loadedDatabaseExtensions` and `DATABASE_EXTENSIONS` are exported. `ForgeDBVoteStore` is the old name of `DatabaseVoteStore` and still works.
+
+### Changed
+- The store takes the database from the extension the bot loaded (`client.db`, or ReForgeDB's exports when both are loaded) instead of `require("@tryforge/forge.db/dist/util")`, so it is always the copy the bot uses. The extension can be listed before or after ReForgeTopGG.
+- With ReForgeDB, the store waits with `DataBase.ready()`, so a database that cannot connect is reported with its reason ("ReForgeDB is not connected yet: ...") instead of a bare timeout.
+- `@tryforge/reforge.db` is an optional peer dependency, like `@tryforge/forge.db`.
+
+### Tests
+- The database store tests run on ReForgeDB (`test/reforgedb.test.js`), ForgeDB (`test/forgedb.test.js`) and both loaded (`test/database-both.test.js`), plus `test/database-store.test.js` without a database. 99 tests (87 before).
+
 ## 3.0.0 (November 2026)
 
 Tag [`v3.0.0`](https://github.com/Demonic1594/ReForgeTopGG/releases/tag/v3.0.0) · [all changes since 2.1.0](https://github.com/Demonic1594/ReForgeTopGG/compare/v2.1.0...v3.0.0) · [upgrade notes](README.md#upgrading-from-2x)
