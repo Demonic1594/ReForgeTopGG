@@ -9,7 +9,7 @@ const os = require("os")
 const path = require("path")
 const { once } = require("events")
 const { ForgeClient } = require("@tryforge/forgescript")
-const { ReForgeTopGG, DatabaseVoteStore, normalizeLegacyVote } = require("../..")
+const { ReForgeTopGG, DatabaseVoteStore, normalizeLegacyVote, remindToSwitch } = require("../..")
 const { run, upvote, USER, logs } = require("./harness")
 
 const EXTENSIONS = {
@@ -40,6 +40,15 @@ module.exports = function databaseStoreSuite(name) {
         assert.equal((await top.store.pending()).length, 1)
         assert.ok(logs.some((l) => l.text.includes(`vote history is kept in the ${label} user variable "topggVote"`)), "says which database it uses")
         assert.ok(!logs.some((l) => /Both .* are loaded/.test(l.text)))
+    })
+
+    test(`${label}: ${name === "forge.db" ? "the reminder to switch to ReForgeDB is shown once per process" : "no reminder to switch is shown"}`, () => {
+        const shown = logs.filter((l) => l.text.includes("Consider switching to ReForgeDB"))
+        assert.equal(shown.length, name === "forge.db" ? 1 : 0)
+        if (name === "forge.db") {
+            assert.match(shown[0].text, /^\[ReForgeTopGG\] .*existing data.*fewer complications, better compatibility and a better experience.*#switching-from-forgedb/)
+            assert.equal(remindToSwitch(), false, "another ReForge extension asking again does not show it twice")
+        }
     })
 
     test(`${label}: a second vote continues the record`, async () => {

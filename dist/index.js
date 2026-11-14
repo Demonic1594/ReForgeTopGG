@@ -27,6 +27,7 @@ const TopGGCommandManager_1 = require("./structures/TopGGCommandManager");
 const VoteWebhook_1 = require("./structures/VoteWebhook");
 const Vote_1 = require("./structures/Vote");
 const VoteStore_1 = require("./structures/VoteStore");
+const DatabaseReminder_1 = require("./structures/DatabaseReminder");
 const Reminders_1 = require("./structures/Reminders");
 const TopGGApi_1 = require("./structures/TopGGApi");
 const Dedupe_1 = require("./structures/Dedupe");
@@ -39,6 +40,7 @@ __exportStar(require("./structures/Dedupe"), exports);
 __exportStar(require("./structures/KeyedLock"), exports);
 __exportStar(require("./structures/VoteStore"), exports);
 __exportStar(require("./structures/Reminders"), exports);
+__exportStar(require("./structures/DatabaseReminder"), exports);
 __exportStar(require("./structures/Logger"), exports);
 /** Top.gg refuses to be posted to more often than every 15 minutes. */
 exports.MIN_POST_INTERVAL = 900_000;
@@ -167,6 +169,9 @@ class ReForgeTopGG extends forgescript_1.ForgeExtension {
         if (isDatabaseStore(this.options.store) && !(0, VoteStore_1.loadedDatabaseExtensions)(client).length) {
             throw new Error((0, Logger_1.prefixed)(`Store "${this.options.store}" needs a database extension: add new ReForgeDB() (npm i github:Demonic1594/ReForgeDB) or new ForgeDB() (npm i @tryforge/forge.db) to your extensions.`));
         }
+        // ForgeDB without ReForgeDB: remind once (shared with the other ReForge extensions).
+        if ((0, VoteStore_1.loadedDatabaseExtensions)(client)[0]?.name === "forge.db")
+            (0, DatabaseReminder_1.remindToSwitch)();
         super.validateAndInit(client);
     }
     init(client) {

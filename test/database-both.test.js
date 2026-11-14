@@ -33,4 +33,5 @@ test("both loaded: the store uses ReForgeDB and warns to keep only one", async (
     assert.equal(JSON.parse(row.value).count, 1, "stored in ReForgeDB")
     assert.equal(await client.db.get({ type: "user", name: "topggVote", id: USER }), null, "not in ForgeDB")
     assert.ok(logs.some((l) => /Both ReForgeDB and ForgeDB are loaded/.test(l.text)))
+    assert.deepEqual(logs.filter((l) => l.text.includes("Consider switching to ReForgeDB")), [], "ReForgeDB is loaded: nothing to switch to")
 })

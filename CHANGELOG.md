@@ -9,6 +9,7 @@ Vote history works with [ReForgeDB](https://github.com/Demonic1594/ReForgeDB) as
 ### Added
 - **ReForgeDB support.** The database store keeps vote history in the user variables of whichever of ReForgeDB and ForgeDB the bot loaded, ReForgeDB when both are (with a warning to keep only one). Before, `store: "forgedb"` refused to start without an extension named `forge.db` and always loaded ForgeDB's own module.
 - `store: "reforgedb"`. `"forgedb"` is the same store, kept for 3.0.0 configurations.
+- With ForgeDB alone, a one-time reminder at start-up to consider switching to ReForgeDB (your data is used as it is), with a link to the switching guide. It is shown once per process, shared with the other ReForge extensions (ReForgeGiveaways 2.3.0 and newer) through a global symbol, and `logLevel: "warn"` hides it. `remindToSwitch` is exported.
 - `DatabaseVoteStore`, `resolveDataBase`, `loadedDatabaseExtensions` and `DATABASE_EXTENSIONS` are exported. `ForgeDBVoteStore` is the old name of `DatabaseVoteStore` and still works.
 
 ### Changed
@@ -17,7 +18,7 @@ Vote history works with [ReForgeDB](https://github.com/Demonic1594/ReForgeDB) as
 - `@tryforge/reforge.db` is an optional peer dependency, like `@tryforge/forge.db`.
 
 ### Tests
-- The database store tests run on ReForgeDB (`test/reforgedb.test.js`), ForgeDB (`test/forgedb.test.js`) and both loaded (`test/database-both.test.js`), plus `test/database-store.test.js` without a database. 97 tests (87 before).
+- The database store tests run on ReForgeDB (`test/reforgedb.test.js`), ForgeDB (`test/forgedb.test.js`) and both loaded (`test/database-both.test.js`), plus `test/database-store.test.js` without a database. 99 tests (87 before).
 
 ## 3.0.0 (November 2026)
 

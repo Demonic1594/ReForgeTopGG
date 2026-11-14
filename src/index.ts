@@ -10,6 +10,7 @@ import { ITopGGEvents } from "./structures/TopGGEventHandlers"
 import { signBody, VoteWebhook } from "./structures/VoteWebhook"
 import { isSnowflake, Vote, voteTarget } from "./structures/Vote"
 import { applyVote, DatabaseVoteStore, loadedDatabaseExtensions, MemoryVoteStore, recordToVote, VoteRecord, VoteStore } from "./structures/VoteStore"
+import { remindToSwitch } from "./structures/DatabaseReminder"
 import { ReminderScheduler } from "./structures/Reminders"
 import { TopGGApi } from "./structures/TopGGApi"
 import { DedupeCache, dedupeKey, TEST_DEDUPE_WINDOW } from "./structures/Dedupe"
@@ -23,6 +24,7 @@ export * from "./structures/Dedupe"
 export * from "./structures/KeyedLock"
 export * from "./structures/VoteStore"
 export * from "./structures/Reminders"
+export * from "./structures/DatabaseReminder"
 export * from "./structures/Logger"
 
 /** Top.gg refuses to be posted to more often than every 15 minutes. */
@@ -245,6 +247,8 @@ export class ReForgeTopGG extends ForgeExtension {
         if (isDatabaseStore(this.options.store) && !loadedDatabaseExtensions(client).length) {
             throw new Error(prefixed(`Store "${this.options.store}" needs a database extension: add new ReForgeDB() (npm i github:Demonic1594/ReForgeDB) or new ForgeDB() (npm i @tryforge/forge.db) to your extensions.`))
         }
+        // ForgeDB without ReForgeDB: remind once (shared with the other ReForge extensions).
+        if (loadedDatabaseExtensions(client)[0]?.name === "forge.db") remindToSwitch()
         super.validateAndInit(client)
     }
 

@@ -16,6 +16,7 @@ export * from "./structures/Dedupe";
 export * from "./structures/KeyedLock";
 export * from "./structures/VoteStore";
 export * from "./structures/Reminders";
+export * from "./structures/DatabaseReminder";
 export * from "./structures/Logger";
 /** Top.gg refuses to be posted to more often than every 15 minutes. */
 export declare const MIN_POST_INTERVAL = 900000;
