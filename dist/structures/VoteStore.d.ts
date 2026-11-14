@@ -96,8 +96,11 @@ export declare class MemoryVoteStore implements VoteStore {
         reminded: boolean;
     }[];
 }
-/** Minimal shape of ForgeDB's DataBase class used here. */
-interface ForgeDBDataBase {
+/** The database extensions the database store works with, in order of preference. */
+export declare const DATABASE_EXTENSIONS: readonly ["reforge.db", "forge.db"];
+export type DatabaseExtensionName = (typeof DATABASE_EXTENSIONS)[number];
+/** Minimal shape of the `DataBase` class of ReForgeDB and ForgeDB used here. */
+export interface DataBaseLike {
     get(data: {
         type: string;
         name: string;
@@ -117,19 +120,60 @@ interface ForgeDBDataBase {
     }): Promise<Array<{
         value: string;
     }>>;
+    /** ReForgeDB: resolves once connected, rejects after `timeout` ms. */
+    ready?(timeout?: number): Promise<void>;
 }
+interface ClientLike {
+    options: {
+        extensions?: Array<{
+            name: string;
+            constructor: Function;
+        }>;
+    };
+    db?: unknown;
+}
+/** The database extensions the bot loaded, preferred one first. */
+export declare function loadedDatabaseExtensions(client: ClientLike): {
+    name: DatabaseExtensionName;
+    label: string;
+    extension: {
+        name: string;
+        constructor: Function;
+    };
+}[];
 /**
- * Keeps records in ForgeDB user variables (one JSON value per user, readable
- * with `$getUserVar[<name>;<user ID>]`). ForgeDB must be installed and loaded
- * as an extension; it is not a dependency of this package.
+ * Finds the `DataBase` class of the database extension the bot loaded:
+ * ReForgeDB, else ForgeDB. Both set `client.db` to it; with both loaded,
+ * `client.db` is whichever loaded last, so ReForgeDB's own exports are used.
  */
-export declare class ForgeDBVoteStore implements VoteStore {
+export declare function resolveDataBase(client: ClientLike): {
+    label: string;
+    db: DataBaseLike;
+    alsoLoaded?: string;
+};
+/**
+ * Keeps records in user variables of ReForgeDB or ForgeDB, whichever the bot
+ * loaded (ReForgeDB when both are): one JSON value per user, readable with
+ * `$getUserVar[<name>;<user ID>]`. Neither is a dependency of this package.
+ */
+export declare class DatabaseVoteStore implements VoteStore {
     readonly variable: string;
-    private readonly load;
+    private readonly load?;
     private db;
-    constructor(variable?: string, load?: () => ForgeDBDataBase);
+    private label;
+    private client;
     /**
-     * ForgeDB opens its database in the background after the bot starts. Wait for
+     * @param variable The user variable records are kept in.
+     * @param load Returns the `DataBase` class to use. By default it is the
+     * one of the database extension the client loaded (see `attach`).
+     */
+    constructor(variable?: string, load?: (() => DataBaseLike) | undefined);
+    /** Called by the extension with its client, to find the database extension the bot loaded. */
+    attach(client: ClientLike): void;
+    /** Sets `db` once: the one `load` returns, else the client's database extension. */
+    private resolve;
+    /**
+     * The database opens in the background after the bot starts. Wait for
      * it: briefly for a vote (the webhook must answer Top.gg within 5 s, and a
      * failure makes Top.gg deliver it again), longer when restoring reminders.
      */
@@ -138,5 +182,9 @@ export declare class ForgeDBVoteStore implements VoteStore {
     set(record: VoteRecord): Promise<void>;
     pending(): Promise<VoteRecord[]>;
 }
+/** @deprecated Renamed to `DatabaseVoteStore`, which also works with ReForgeDB. */
+export declare const ForgeDBVoteStore: typeof DatabaseVoteStore;
+/** @deprecated Renamed to `DatabaseVoteStore`. */
+export type ForgeDBVoteStore = DatabaseVoteStore;
 export {};
 //# sourceMappingURL=VoteStore.d.ts.map

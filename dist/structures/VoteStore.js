@@ -1,10 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ForgeDBVoteStore = exports.MemoryVoteStore = void 0;
+exports.ForgeDBVoteStore = exports.DatabaseVoteStore = exports.DATABASE_EXTENSIONS = exports.MemoryVoteStore = void 0;
 exports.applyVote = applyVote;
 exports.currentStreak = currentStreak;
 exports.recordToVote = recordToVote;
+exports.loadedDatabaseExtensions = loadedDatabaseExtensions;
+exports.resolveDataBase = resolveDataBase;
 const Vote_1 = require("./Vote");
+const Logger_1 = require("./Logger");
 /** Folds a new vote into the user's record. Test votes must not be passed. */
 function applyVote(previous, vote, streakGrace) {
     const continues = previous !== undefined && vote.votedAt <= previous.expiresAt + streakGrace;
@@ -70,32 +73,128 @@ class MemoryVoteStore {
     }
 }
 exports.MemoryVoteStore = MemoryVoteStore;
+/** The database extensions the database store works with, in order of preference. */
+exports.DATABASE_EXTENSIONS = ["reforge.db", "forge.db"];
+const LABELS = { "reforge.db": "ReForgeDB", "forge.db": "ForgeDB" };
+/** The database extensions the bot loaded, preferred one first. */
+function loadedDatabaseExtensions(client) {
+    const out = [];
+    for (const name of exports.DATABASE_EXTENSIONS) {
+        const extension = client.options.extensions?.find((x) => x.name === name);
+        if (extension)
+            out.push({ name, label: LABELS[name], extension });
+    }
+    return out;
+}
+function isDataBase(value) {
+    const v = value;
+    return (typeof v === "function" || typeof v === "object") && !!v && typeof v.get === "function" && typeof v.set === "function" && typeof v.find === "function";
+}
 /**
- * Keeps records in ForgeDB user variables (one JSON value per user, readable
- * with `$getUserVar[<name>;<user ID>]`). ForgeDB must be installed and loaded
- * as an extension; it is not a dependency of this package.
+ * The `DataBase` a loaded extension's package exports (ReForgeDB exports it),
+ * found through the module cache so it is the very copy the bot loaded.
  */
-class ForgeDBVoteStore {
+function exportedDataBase(extension) {
+    const ctor = extension.constructor;
+    for (const mod of Object.values(require.cache)) {
+        try {
+            const exports = mod?.exports;
+            if (exports && typeof exports === "object" && exports[ctor.name] === ctor && isDataBase(exports.DataBase))
+                return exports.DataBase;
+        }
+        catch {
+            // A module with odd exports (a throwing getter or proxy): not ours.
+        }
+    }
+    return undefined;
+}
+/**
+ * Finds the `DataBase` class of the database extension the bot loaded:
+ * ReForgeDB, else ForgeDB. Both set `client.db` to it; with both loaded,
+ * `client.db` is whichever loaded last, so ReForgeDB's own exports are used.
+ */
+function resolveDataBase(client) {
+    const [preferred, other] = loadedDatabaseExtensions(client);
+    if (!preferred)
+        throw new Error("No database extension is loaded: add new ReForgeDB() or new ForgeDB() to your extensions");
+    const db = (other && exportedDataBase(preferred.extension)) || (isDataBase(client.db) ? client.db : undefined) || exportedDataBase(preferred.extension);
+    if (!db)
+        throw new Error(`${preferred.label} is in your extensions but did not set up its database (client.db is ${client.db === undefined ? "missing" : "not its DataBase class"}). Check the errors ${preferred.label} logged at start-up.`);
+    return { label: preferred.label, db, alsoLoaded: other?.label };
+}
+/**
+ * Keeps records in user variables of ReForgeDB or ForgeDB, whichever the bot
+ * loaded (ReForgeDB when both are): one JSON value per user, readable with
+ * `$getUserVar[<name>;<user ID>]`. Neither is a dependency of this package.
+ */
+class DatabaseVoteStore {
     variable;
     load;
     db = null;
-    constructor(variable = "topggVote", load = () => require("@tryforge/forge.db/dist/util").DataBase) {
+    label = "The database";
+    client = null;
+    /**
+     * @param variable The user variable records are kept in.
+     * @param load Returns the `DataBase` class to use. By default it is the
+     * one of the database extension the client loaded (see `attach`).
+     */
+    constructor(variable = "topggVote", load) {
         this.variable = variable;
         this.load = load;
     }
+    /** Called by the extension with its client, to find the database extension the bot loaded. */
+    attach(client) {
+        this.client = client;
+        this.db = null;
+    }
+    /** Sets `db` once: the one `load` returns, else the client's database extension. */
+    resolve() {
+        if (this.load)
+            return this.load();
+        if (this.client) {
+            const { label, db, alsoLoaded } = resolveDataBase(this.client);
+            this.label = label;
+            Logger_1.ReForgeTopGGLogger.debug(`vote history is kept in the ${label} user variable "${this.variable}"`);
+            if (alsoLoaded)
+                Logger_1.ReForgeTopGGLogger.warn(`Both ${label} and ${alsoLoaded} are loaded. They add the same functions, so keep only one (vote history uses ${label}).`);
+            return db;
+        }
+        // Used on its own, without the extension: the installed package.
+        for (const [pkg, label] of [["@tryforge/reforge.db", "ReForgeDB"], ["@tryforge/forge.db/dist/util", "ForgeDB"]]) {
+            try {
+                const db = require(pkg).DataBase;
+                if (isDataBase(db)) {
+                    this.label = label;
+                    return db;
+                }
+            }
+            catch {
+                // Not installed: try the next one.
+            }
+        }
+        throw new Error("No database: install and load ReForgeDB or ForgeDB");
+    }
     /**
-     * ForgeDB opens its database in the background after the bot starts. Wait for
+     * The database opens in the background after the bot starts. Wait for
      * it: briefly for a vote (the webhook must answer Top.gg within 5 s, and a
      * failure makes Top.gg deliver it again), longer when restoring reminders.
      */
     async database(waitMs) {
-        this.db ??= this.load();
-        const connected = () => !!this.db.db;
+        const db = (this.db ??= this.resolve());
+        if (typeof db.ready === "function") {
+            // ReForgeDB says when it is connected (and why it never will be).
+            await db.ready(waitMs).catch((err) => {
+                throw new Error(`${this.label} is not connected yet: ${(0, Logger_1.errorMessage)(err)}`);
+            });
+            return db;
+        }
+        // ForgeDB keeps its connection in a private static field.
+        const connected = () => !!db.db;
         for (const until = Date.now() + waitMs; !connected() && Date.now() < until;)
             await new Promise((r) => setTimeout(r, 50));
         if (!connected())
-            throw new Error("ForgeDB is not connected yet");
-        return this.db;
+            throw new Error(`${this.label} is not connected yet`);
+        return db;
     }
     async get(user) {
         const row = await (await this.database(3_000)).get({ type: "user", name: this.variable, id: user });
@@ -109,7 +208,9 @@ class ForgeDBVoteStore {
         return rows.map((r) => parseRecord(r.value)).filter((r) => !!r && !r.reminded);
     }
 }
-exports.ForgeDBVoteStore = ForgeDBVoteStore;
+exports.DatabaseVoteStore = DatabaseVoteStore;
+/** @deprecated Renamed to `DatabaseVoteStore`, which also works with ReForgeDB. */
+exports.ForgeDBVoteStore = DatabaseVoteStore;
 function parseRecord(value) {
     try {
         const r = typeof value === "string" ? JSON.parse(value) : value;

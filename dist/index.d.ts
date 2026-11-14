@@ -75,11 +75,12 @@ export interface IReForgeTopGGOptions {
     dedupeWindow?: number;
     /**
      * Where vote history is kept: `"memory"` (default, lost on restart, at
-     * most 100,000 users), `"forgedb"` (ForgeDB user variables, needs the
-     * ForgeDB extension), or your own {@link VoteStore}.
+     * most 100,000 users), `"reforgedb"` (user variables of ReForgeDB or
+     * ForgeDB, whichever the bot loaded; `"forgedb"` is the same), or your own
+     * {@link VoteStore}.
      */
-    store?: "memory" | "forgedb" | VoteStore;
-    /** ForgeDB variable name used by the `"forgedb"` store. Defaults to `topggVote`. */
+    store?: "memory" | "reforgedb" | "forgedb" | VoteStore;
+    /** User variable used by the `"reforgedb"` store. Defaults to `topggVote`. */
     storeVariable?: string;
     /**
      * How long after a user could vote again a new vote still continues their

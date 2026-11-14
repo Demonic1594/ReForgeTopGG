@@ -9,7 +9,7 @@ import { TopGGCommandManager } from "./structures/TopGGCommandManager"
 import { ITopGGEvents } from "./structures/TopGGEventHandlers"
 import { signBody, VoteWebhook } from "./structures/VoteWebhook"
 import { isSnowflake, Vote, voteTarget } from "./structures/Vote"
-import { applyVote, ForgeDBVoteStore, MemoryVoteStore, recordToVote, VoteRecord, VoteStore } from "./structures/VoteStore"
+import { applyVote, DatabaseVoteStore, loadedDatabaseExtensions, MemoryVoteStore, recordToVote, VoteRecord, VoteStore } from "./structures/VoteStore"
 import { ReminderScheduler } from "./structures/Reminders"
 import { TopGGApi } from "./structures/TopGGApi"
 import { DedupeCache, dedupeKey, TEST_DEDUPE_WINDOW } from "./structures/Dedupe"
@@ -85,11 +85,12 @@ export interface IReForgeTopGGOptions {
     dedupeWindow?: number
     /**
      * Where vote history is kept: `"memory"` (default, lost on restart, at
-     * most 100,000 users), `"forgedb"` (ForgeDB user variables, needs the
-     * ForgeDB extension), or your own {@link VoteStore}.
+     * most 100,000 users), `"reforgedb"` (user variables of ReForgeDB or
+     * ForgeDB, whichever the bot loaded; `"forgedb"` is the same), or your own
+     * {@link VoteStore}.
      */
-    store?: "memory" | "forgedb" | VoteStore
-    /** ForgeDB variable name used by the `"forgedb"` store. Defaults to `topggVote`. */
+    store?: "memory" | "reforgedb" | "forgedb" | VoteStore
+    /** User variable used by the `"reforgedb"` store. Defaults to `topggVote`. */
     storeVariable?: string
     /**
      * How long after a user could vote again a new vote still continues their
@@ -174,8 +175,8 @@ export class ReForgeTopGG extends ForgeExtension {
         if (options.logLevel) log.level = options.logLevel
         this.options = options
         this.api = new TopGGApi(options.token ?? undefined)
-        this.store = options.store === "forgedb"
-            ? new ForgeDBVoteStore(options.storeVariable)
+        this.store = isDatabaseStore(options.store)
+            ? new DatabaseVoteStore(options.storeVariable)
             : typeof options.store === "object" ? options.store : new MemoryVoteStore()
         this.reminders = options.reminders ? new ReminderScheduler((user, expiresAt) => void this.remind(user, expiresAt)) : null
         this.webhook = this.webhookEnabled
@@ -241,14 +242,15 @@ export class ReForgeTopGG extends ForgeExtension {
         if (unknown.length) {
             throw new Error(prefixed(`Unknown event${unknown.length > 1 ? "s" : ""} ${unknown.map((e) => `"${e}"`).join(", ")} in "events". The events are ${TOPGG_EVENTS.join(", ")}.`))
         }
-        if (this.options.store === "forgedb" && !client.options.extensions?.some((x) => x.name === "forge.db")) {
-            throw new Error(prefixed("Store \"forgedb\" needs the ForgeDB extension (npm i @tryforge/forge.db, then add new ForgeDB() to your extensions)."))
+        if (isDatabaseStore(this.options.store) && !loadedDatabaseExtensions(client).length) {
+            throw new Error(prefixed(`Store "${this.options.store}" needs a database extension: add new ReForgeDB() (npm i github:Demonic1594/ReForgeDB) or new ForgeDB() (npm i @tryforge/forge.db) to your extensions.`))
         }
         super.validateAndInit(client)
     }
 
     init(client: ForgeClient): void {
         this.client = client
+        if (this.store instanceof DatabaseVoteStore) this.store.attach(client)
         this.commands = new TopGGCommandManager(client)
 
         EventManager.load(TopGGEventManagerName, __dirname + "/events")
@@ -557,6 +559,11 @@ export function normalizeOptions(raw: IReForgeTopGGOptions): IReForgeTopGGOption
     return o
 }
 
+/** Whether `store` names the database store (`"reforgedb"`, or `"forgedb"` as before 3.1.0). */
+function isDatabaseStore(store: unknown): store is "reforgedb" | "forgedb" {
+    return store === "reforgedb" || store === "forgedb"
+}
+
 function validateOptions(o: IReForgeTopGGOptions) {
     const fail = (msg: string) => { throw new Error(prefixed(msg)) }
     if (o.logLevel !== undefined && !isLogLevel(o.logLevel)) fail(`"logLevel" must be one of ${LOG_LEVELS.join(", ")}, got ${JSON.stringify(o.logLevel)}`)
@@ -571,8 +578,8 @@ function validateOptions(o: IReForgeTopGGOptions) {
     if (port !== undefined && (!Number.isInteger(port) || (port as number) < 0 || (port as number) > 65535)) fail(`"port" must be a whole number from 0 to 65535, got ${JSON.stringify(port)}`)
     const w = o.webhook || {}
     if (w.secret !== undefined && (typeof w.secret !== "string" || w.secret.trim() === "")) fail("\"webhook.secret\" is empty. Set it to the secret shown on your project's Webhooks page on Top.gg, or remove it.")
-    if (o.store !== undefined && o.store !== "memory" && o.store !== "forgedb" && !(o.store && typeof o.store === "object" && typeof o.store.get === "function" && typeof o.store.set === "function")) {
-        fail("\"store\" must be \"memory\", \"forgedb\" or an object with get and set methods")
+    if (o.store !== undefined && o.store !== "memory" && !isDatabaseStore(o.store) && !(o.store && typeof o.store === "object" && typeof o.store.get === "function" && typeof o.store.set === "function")) {
+        fail("\"store\" must be \"memory\", \"reforgedb\" (or \"forgedb\") or an object with get and set methods")
     }
     if (o.streakGrace !== undefined && (!Number.isFinite(o.streakGrace) || o.streakGrace < 0)) fail("\"streakGrace\" must be a number of ms, 0 or more")
     if (w.path !== undefined && !/^\/\S*$/.test(w.path)) fail("\"webhook.path\" must start with /")
