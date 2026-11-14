@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const forgescript_1 = require("@tryforge/forgescript");
 const __1 = require("../..");
+const Logger_1 = require("../../structures/Logger");
 exports.default = new forgescript_1.NativeFunction({
     name: "$monthlyVotes",
     version: "1.0.0",
@@ -11,12 +12,12 @@ exports.default = new forgescript_1.NativeFunction({
     async execute(ctx) {
         const id = ctx.client.user?.id;
         if (!id)
-            return this.customError("The bot is not logged in yet");
+            return this.customError((0, Logger_1.prefixed)("The bot is not logged in yet"));
         const result = await ctx.getExtension(__1.ReForgeTopGG, true).api.getBot(id);
         if (!result.ok)
             return this.customError(result.error);
         const value = result.value?.monthlyPoints;
-        return typeof value === "number" ? this.success(value) : this.customError("Top.gg API returned no monthlyPoints");
+        return typeof value === "number" ? this.success(value) : this.customError((0, Logger_1.prefixed)("Top.gg API returned no monthlyPoints"));
     },
 });
 //# sourceMappingURL=monthlyVotes.js.map

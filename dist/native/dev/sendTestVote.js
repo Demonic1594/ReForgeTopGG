@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const forgescript_1 = require("@tryforge/forgescript");
 const __1 = require("../..");
 const resolveUser_1 = require("../../structures/resolveUser");
+const Logger_1 = require("../../structures/Logger");
 exports.default = new forgescript_1.NativeFunction({
     name: "$sendTestVote",
     version: "2.0.0",
@@ -38,7 +39,7 @@ exports.default = new forgescript_1.NativeFunction({
             return this.success(await ctx.getExtension(__1.ReForgeTopGG, true).sendTestVote({ user: user.id, weekend: !!weekend, query: query ?? undefined }));
         }
         catch (err) {
-            return this.customError(`Test vote failed: ${err.message}`);
+            return this.customError((0, Logger_1.prefixed)(`Test vote failed: ${err.message.replace(/^\[ReForgeTopGG\] /, "")}`));
         }
     },
 });

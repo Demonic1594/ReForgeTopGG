@@ -1,5 +1,31 @@
 # Changelog
 
+## 3.0.0 (November 2026)
+
+Tag [`v3.0.0`](https://github.com/Demonic1594/ReForgeTopGG/releases/tag/v3.0.0) · [all changes since 2.1.0](https://github.com/Demonic1594/ReForgeTopGG/compare/v2.1.0...v3.0.0) · [upgrade notes](README.md#upgrading-from-2x)
+
+Two fixes in vote history, one in the `$hasVoted` cache, and the naming and logging conventions of the ReForge extensions. Each fix has a test in `test/v3.test.js` that fails on 2.1.0.
+
+### Breaking
+- **`ForgeTopGG` and `IForgeTopGGOptions` are no longer exported.** Use `ReForgeTopGG` and `IReForgeTopGGOptions`.
+- **Every message starts with `[ReForgeTopGG]`**: console lines (were `ReForgeTopGG:`), option errors, and function errors (had no prefix). Errors handed to the `error` event keep their original message.
+
+### Fixed
+- **A restart sent a reminder for every vote ever stored.** Each vote is stored as "reminder not sent", also with `reminders` off, and every such record was reminded at once when the bot became ready, however old: 500 votes from 60 days ago fired 500 `voteReminder` events within half a second. A reminder more than `reminderMaxDelay` (new option, 12 hours) late is now dropped and marked as sent, and the number dropped is logged. They are marked one at a time, after the reminders that are still due have been scheduled.
+- **A reminder could overwrite a vote stored at the same moment.** The reminder read the user's record and wrote it back with "sent" set, without the per-user lock votes use since 2.1.0: a vote stored in between was lost (count 1 instead of 2 in the test). Reminders now take the same lock.
+- **`$hasVoted` could say "not voted" for 30 s right after a vote.** When a request was on its way while the vote reached the webhook, its older answer was cached after the vote had cleared the cache. A vote now also drops the request in flight, which may no longer fill the cache.
+
+### Added
+- `logLevel` option (`silent`, `error`, `warn`, `info`, `debug`, `trace`) and the `REFORGETOPGG_LOG_LEVEL` environment variable. `debug` shows every vote (accepted, or dropped as a repeat, with the time to store it), reminder and Top.gg API request; `trace` every webhook request with its status and time. Secrets, `Authorization` and signature headers and bodies are never written.
+- `reminderMaxDelay` option.
+- Warnings when `voteReminder` is in `events` but `reminders` is off, and when `reminders` is on but nothing listens to `voteReminder`.
+- `ReForgeTopGGLogger`, `prefixed()` and `formatDuration()` are exported.
+
+### Changed
+- CI runs on Node.js 22 and 24 (was 20 and 22), plus ForgeScript 2.5.0. The `engines` field still allows Node.js 18.17 and newer.
+- The refused-requests warning says "since the last report" instead of "in the last minute", which was wrong when more than a minute had passed.
+- Test suite: 87 tests (77 before).
+
 ## 2.1.0 (November 2026)
 
 Tag [`v2.1.0`](https://github.com/Demonic1594/ReForgeTopGG/releases/tag/v2.1.0) · [all changes since 2.0.0](https://github.com/Demonic1594/ReForgeTopGG/compare/7d83c55...v2.1.0)

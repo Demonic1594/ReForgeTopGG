@@ -70,7 +70,7 @@ test("running alongside forge.topgg is refused with a clear error", () => {
     const fake = { name: "forge.topgg", validateAndInit() {} }
     assert.throws(
         () => new ForgeClient({ intents: ["Guilds"], events: [], prefixes: ["!"], extensions: [fake, new ReForgeTopGG({ auth: "s", port: 0 })] }),
-        /cannot run alongside forge\.topgg/,
+        /cannot run alongside forge\.topgg/i,
     )
 })
 

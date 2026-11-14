@@ -1,6 +1,6 @@
 {
   "name": "@tryforge/reforge.topgg",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "ReForgeTopGG: a hardened Top.gg extension for ForgeScript. Posts bot stats and receives votes safely (required secret, signed v1 webhooks, de-duplicated retries), with vote history, streaks and reminders. Fork of tryforge/ForgeTopGG.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

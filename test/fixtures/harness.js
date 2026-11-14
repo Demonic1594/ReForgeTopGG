@@ -9,11 +9,15 @@ const { once } = require("events")
 const { ForgeClient, Compiler, Interpreter, Logger } = require("@tryforge/forgescript")
 const { ReForgeTopGG } = require("../..")
 
-// Collect ForgeScript error logs instead of printing them.
+// Collect ForgeScript logs instead of printing them. ReForgeTopGG writes
+// through Logger.log (with its own level gate), other code through
+// Logger.error/warn/info.
+const { LogType } = require("@tryforge/forgescript")
 const logs = []
 for (const level of ["error", "warn", "info"]) {
     Logger[level] = (...args) => logs.push({ level, text: args.map(String).join(" ") })
 }
+Logger.log = (_priority, type, ...args) => logs.push({ level: String(LogType[type] ?? type).toLowerCase(), text: args.map(String).join(" ") })
 
 const AUTH = "test-secret-123"
 const USER = "123456789012345678"
