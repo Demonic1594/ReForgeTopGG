@@ -348,6 +348,8 @@ The tests start a real ForgeClient (it never logs in) with the extension on a ra
     git push origin v<x.y.z>
     ```
 
+    Pushing the tag publishes the GitHub release (`.github/workflows/release.yml`). Its notes come from `.github/release-notes/v<x.y.z>.md` if that file exists, otherwise from the version's section of `CHANGELOG.md`. The workflow refuses a tag that does not match the `package.json` version.
+
 <h3 align="center">Credits and License</h3><hr>
 
 ReForgeTopGG is a modified fork of [ForgeTopGG](https://github.com/tryforge/ForgeTopGG) (`@tryforge/forge.topgg`) by ruben40000 (Plinkie03), aggelos-007, xNickyDev and the other tryforge contributors, forked at version 1.1.4 (commit `6a392b5`). Modifications were made in November 2026 and are listed in the [changelog](CHANGELOG.md).
