@@ -1,6 +1,6 @@
 {
   "name": "@tryforge/reforge.topgg",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "ReForgeTopGG: a hardened Top.gg extension for ForgeScript. Posts bot stats and receives votes safely (required secret, signed v1 webhooks, de-duplicated retries), with vote history, streaks and reminders. Fork of tryforge/ForgeTopGG.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -36,14 +36,15 @@
   "devDependencies": {
     "@tryforge/forge.db": "^2.1.1",
     "@tryforge/forgescript": "^2.8.0",
+    "@tryforge/reforge.db": "github:Demonic1594/ReForgeDB#6c9808a45ea1ada5741dfb9db602548da0b4c4f7",
     "@types/node": "^22.20.5",
     "better-sqlite3": "^12.11.1",
     "discord.js": "^14.28.1",
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@tryforge/forgescript": ">=2.5.0",
-    "@tryforge/forge.db": "^2.1.0"
+    "@tryforge/forge.db": "^2.1.0",
+    "@tryforge/forgescript": ">=2.5.0"
   },
   "peerDependenciesMeta": {
     "@tryforge/forge.db": {

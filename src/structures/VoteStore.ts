@@ -106,22 +106,30 @@ export class MemoryVoteStore implements VoteStore {
     }
 }
 
-/** Minimal shape of ForgeDB's DataBase class used here. */
-interface ForgeDBDataBase {
+/** What the "forgedb" store uses of the DataBase class of ReForgeDB and ForgeDB (the same in both). */
+export interface ForgeDBDataBase {
     get(data: { type: string; name: string; id: string }): Promise<{ value: string } | null>
     set(data: { type: string; name: string; id: string; value: string }): Promise<void>
     find(data: { type: string; name: string }): Promise<Array<{ value: string }>>
 }
 
 /**
- * Keeps records in ForgeDB user variables (one JSON value per user, readable
- * with `$getUserVar[<name>;<user ID>]`). ForgeDB must be installed and loaded
- * as an extension; it is not a dependency of this package.
+ * Keeps records in user variables of ReForgeDB or ForgeDB, whichever the bot
+ * loaded (one JSON value per user, readable with `$getUserVar[<name>;<user ID>]`).
+ * The database extension must be loaded; it is not a dependency of this package.
+ * ReForgeTopGG points the store at `client.db` (the `DataBase` class both
+ * extensions put there) when it starts.
  */
 export class ForgeDBVoteStore implements VoteStore {
     private db: ForgeDBDataBase | null = null
 
-    constructor(public readonly variable = "topggVote", private readonly load = () => require("@tryforge/forge.db/dist/util").DataBase as ForgeDBDataBase) {}
+    constructor(public readonly variable = "topggVote", private load: () => ForgeDBDataBase = () => require("@tryforge/forge.db/dist/util").DataBase as ForgeDBDataBase) {}
+
+    /** Reads and writes through this `DataBase` class (ReForgeDB's or ForgeDB's `client.db`). */
+    use(load: () => ForgeDBDataBase) {
+        this.load = load
+        this.db = null
+    }
 
     /**
      * ForgeDB opens its database in the background after the bot starts. Wait for
@@ -130,9 +138,13 @@ export class ForgeDBVoteStore implements VoteStore {
      */
     private async database(waitMs: number): Promise<ForgeDBDataBase> {
         this.db ??= this.load()
-        const connected = () => !!(this.db as unknown as { db?: unknown }).db
+        // ReForgeDB has a public `connected`; ForgeDB sets its static `db` once connected.
+        const connected = () => {
+            const d = this.db as unknown as { connected?: boolean; db?: unknown }
+            return typeof d.connected === "boolean" ? d.connected : !!d.db
+        }
         for (const until = Date.now() + waitMs; !connected() && Date.now() < until;) await new Promise((r) => setTimeout(r, 50))
-        if (!connected()) throw new Error("ForgeDB is not connected yet")
+        if (!connected()) throw new Error("The database (ReForgeDB or ForgeDB) is not connected yet")
         return this.db
     }
 

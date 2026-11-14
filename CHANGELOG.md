@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.1.0 (November 2026)
+
+Tag [`v3.1.0`](https://github.com/Demonic1594/ReForgeTopGG/releases/tag/v3.1.0) · [all changes since 3.0.0](https://github.com/Demonic1594/ReForgeTopGG/compare/v3.0.0...v3.1.0)
+
+`store: "forgedb"` works with ReForgeDB as well as ForgeDB. Nothing to migrate.
+
+### Fixed
+- **`store: "forgedb"` did not work with ReForgeDB.** It refused to start unless an extension named `forge.db` was loaded, and read and wrote through `@tryforge/forge.db`. It now accepts ReForgeDB (`reforge.db`) or ForgeDB (`forge.db`) and reads and writes through `client.db`, the `DataBase` class both put there, so the history lands in the database the bot actually uses. With neither, the error names both.
+
+### Added
+- With ForgeDB in the bot's extensions, a reminder once per process to switch to ReForgeDB (existing data is used as it is; fewer complications, better compatibility and a better experience with other ReForge extensions). Shared with the other ReForge extensions (ReForgeGiveaways 3.0.0 shows the same one), so it is shown once even when several notice ForgeDB; `logLevel: "warn"` hides it.
+- `remindToSwitch()` and the `ForgeDBDataBase` type are exported; `ForgeDBVoteStore.use()` points the store at another `DataBase` class.
+
+### Tests
+- `test/reforgedb.test.js`: the store with ReForgeDB, in its own process; `test/forgedb.test.js`: the reminder, and the error with neither database. 4 of these tests fail on 3.0.0. 90 tests (87 before).
+
 ## 3.0.0 (November 2026)
 
 Tag [`v3.0.0`](https://github.com/Demonic1594/ReForgeTopGG/releases/tag/v3.0.0) · [all changes since 2.1.0](https://github.com/Demonic1594/ReForgeTopGG/compare/v2.1.0...v3.0.0) · [upgrade notes](README.md#upgrading-from-2x)

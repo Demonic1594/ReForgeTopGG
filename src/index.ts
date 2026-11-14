@@ -9,7 +9,8 @@ import { TopGGCommandManager } from "./structures/TopGGCommandManager"
 import { ITopGGEvents } from "./structures/TopGGEventHandlers"
 import { signBody, VoteWebhook } from "./structures/VoteWebhook"
 import { isSnowflake, Vote, voteTarget } from "./structures/Vote"
-import { applyVote, ForgeDBVoteStore, MemoryVoteStore, recordToVote, VoteRecord, VoteStore } from "./structures/VoteStore"
+import { applyVote, ForgeDBDataBase, ForgeDBVoteStore, MemoryVoteStore, recordToVote, VoteRecord, VoteStore } from "./structures/VoteStore"
+import { remindToSwitch } from "./structures/DatabaseReminder"
 import { ReminderScheduler } from "./structures/Reminders"
 import { TopGGApi } from "./structures/TopGGApi"
 import { DedupeCache, dedupeKey, TEST_DEDUPE_WINDOW } from "./structures/Dedupe"
@@ -23,6 +24,7 @@ export * from "./structures/Dedupe"
 export * from "./structures/KeyedLock"
 export * from "./structures/VoteStore"
 export * from "./structures/Reminders"
+export * from "./structures/DatabaseReminder"
 export * from "./structures/Logger"
 
 /** Top.gg refuses to be posted to more often than every 15 minutes. */
@@ -85,11 +87,11 @@ export interface IReForgeTopGGOptions {
     dedupeWindow?: number
     /**
      * Where vote history is kept: `"memory"` (default, lost on restart, at
-     * most 100,000 users), `"forgedb"` (ForgeDB user variables, needs the
-     * ForgeDB extension), or your own {@link VoteStore}.
+     * most 100,000 users), `"forgedb"` (user variables of ReForgeDB or ForgeDB,
+     * whichever the bot loaded), or your own {@link VoteStore}.
      */
     store?: "memory" | "forgedb" | VoteStore
-    /** ForgeDB variable name used by the `"forgedb"` store. Defaults to `topggVote`. */
+    /** User variable used by the `"forgedb"` store. Defaults to `topggVote`. */
     storeVariable?: string
     /**
      * How long after a user could vote again a new vote still continues their
@@ -241,9 +243,13 @@ export class ReForgeTopGG extends ForgeExtension {
         if (unknown.length) {
             throw new Error(prefixed(`Unknown event${unknown.length > 1 ? "s" : ""} ${unknown.map((e) => `"${e}"`).join(", ")} in "events". The events are ${TOPGG_EVENTS.join(", ")}.`))
         }
-        if (this.options.store === "forgedb" && !client.options.extensions?.some((x) => x.name === "forge.db")) {
-            throw new Error(prefixed("Store \"forgedb\" needs the ForgeDB extension (npm i @tryforge/forge.db, then add new ForgeDB() to your extensions)."))
+        const names = new Set((client.options.extensions ?? []).map((x) => x.name))
+        if (this.options.store === "forgedb" && !names.has("reforge.db") && !names.has("forge.db")) {
+            throw new Error(
+                prefixed("Store \"forgedb\" needs a database extension: add new ReForgeDB() (recommended, npm i github:Demonic1594/ReForgeDB) or new ForgeDB() (npm i @tryforge/forge.db) to your extensions.")
+            )
         }
+        if (names.has("forge.db") && !names.has("reforge.db")) remindToSwitch()
         super.validateAndInit(client)
     }
 
@@ -278,6 +284,16 @@ export class ReForgeTopGG extends ForgeExtension {
                 } catch (err) {
                     this.emitError(new Error(`Top.gg stats posting could not start: ${errorMessage(err)}`))
                 }
+            })
+        }
+
+        // The "forgedb" store reads and writes through client.db: ReForgeDB's or ForgeDB's DataBase.
+        if (this.store instanceof ForgeDBVoteStore) {
+            const store = this.store
+            store.use(() => {
+                const db = (client as unknown as { db?: unknown }).db
+                if (!db) throw new Error("The database (ReForgeDB or ForgeDB) is not loaded")
+                return db as ForgeDBDataBase
             })
         }
 

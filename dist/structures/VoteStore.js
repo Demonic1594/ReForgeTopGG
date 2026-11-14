@@ -71,9 +71,11 @@ class MemoryVoteStore {
 }
 exports.MemoryVoteStore = MemoryVoteStore;
 /**
- * Keeps records in ForgeDB user variables (one JSON value per user, readable
- * with `$getUserVar[<name>;<user ID>]`). ForgeDB must be installed and loaded
- * as an extension; it is not a dependency of this package.
+ * Keeps records in user variables of ReForgeDB or ForgeDB, whichever the bot
+ * loaded (one JSON value per user, readable with `$getUserVar[<name>;<user ID>]`).
+ * The database extension must be loaded; it is not a dependency of this package.
+ * ReForgeTopGG points the store at `client.db` (the `DataBase` class both
+ * extensions put there) when it starts.
  */
 class ForgeDBVoteStore {
     variable;
@@ -83,6 +85,11 @@ class ForgeDBVoteStore {
         this.variable = variable;
         this.load = load;
     }
+    /** Reads and writes through this `DataBase` class (ReForgeDB's or ForgeDB's `client.db`). */
+    use(load) {
+        this.load = load;
+        this.db = null;
+    }
     /**
      * ForgeDB opens its database in the background after the bot starts. Wait for
      * it: briefly for a vote (the webhook must answer Top.gg within 5 s, and a
@@ -90,11 +97,15 @@ class ForgeDBVoteStore {
      */
     async database(waitMs) {
         this.db ??= this.load();
-        const connected = () => !!this.db.db;
+        // ReForgeDB has a public `connected`; ForgeDB sets its static `db` once connected.
+        const connected = () => {
+            const d = this.db;
+            return typeof d.connected === "boolean" ? d.connected : !!d.db;
+        };
         for (const until = Date.now() + waitMs; !connected() && Date.now() < until;)
             await new Promise((r) => setTimeout(r, 50));
         if (!connected())
-            throw new Error("ForgeDB is not connected yet");
+            throw new Error("The database (ReForgeDB or ForgeDB) is not connected yet");
         return this.db;
     }
     async get(user) {

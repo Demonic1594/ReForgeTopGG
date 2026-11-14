@@ -27,6 +27,7 @@ const TopGGCommandManager_1 = require("./structures/TopGGCommandManager");
 const VoteWebhook_1 = require("./structures/VoteWebhook");
 const Vote_1 = require("./structures/Vote");
 const VoteStore_1 = require("./structures/VoteStore");
+const DatabaseReminder_1 = require("./structures/DatabaseReminder");
 const Reminders_1 = require("./structures/Reminders");
 const TopGGApi_1 = require("./structures/TopGGApi");
 const Dedupe_1 = require("./structures/Dedupe");
@@ -39,6 +40,7 @@ __exportStar(require("./structures/Dedupe"), exports);
 __exportStar(require("./structures/KeyedLock"), exports);
 __exportStar(require("./structures/VoteStore"), exports);
 __exportStar(require("./structures/Reminders"), exports);
+__exportStar(require("./structures/DatabaseReminder"), exports);
 __exportStar(require("./structures/Logger"), exports);
 /** Top.gg refuses to be posted to more often than every 15 minutes. */
 exports.MIN_POST_INTERVAL = 900_000;
@@ -164,9 +166,12 @@ class ReForgeTopGG extends forgescript_1.ForgeExtension {
         if (unknown.length) {
             throw new Error((0, Logger_1.prefixed)(`Unknown event${unknown.length > 1 ? "s" : ""} ${unknown.map((e) => `"${e}"`).join(", ")} in "events". The events are ${exports.TOPGG_EVENTS.join(", ")}.`));
         }
-        if (this.options.store === "forgedb" && !client.options.extensions?.some((x) => x.name === "forge.db")) {
-            throw new Error((0, Logger_1.prefixed)("Store \"forgedb\" needs the ForgeDB extension (npm i @tryforge/forge.db, then add new ForgeDB() to your extensions)."));
+        const names = new Set((client.options.extensions ?? []).map((x) => x.name));
+        if (this.options.store === "forgedb" && !names.has("reforge.db") && !names.has("forge.db")) {
+            throw new Error((0, Logger_1.prefixed)("Store \"forgedb\" needs a database extension: add new ReForgeDB() (recommended, npm i github:Demonic1594/ReForgeDB) or new ForgeDB() (npm i @tryforge/forge.db) to your extensions."));
         }
+        if (names.has("forge.db") && !names.has("reforge.db"))
+            (0, DatabaseReminder_1.remindToSwitch)();
         super.validateAndInit(client);
     }
     init(client) {
@@ -201,6 +206,16 @@ class ReForgeTopGG extends forgescript_1.ForgeExtension {
                 catch (err) {
                     this.emitError(new Error(`Top.gg stats posting could not start: ${(0, Logger_1.errorMessage)(err)}`));
                 }
+            });
+        }
+        // The "forgedb" store reads and writes through client.db: ReForgeDB's or ForgeDB's DataBase.
+        if (this.store instanceof VoteStore_1.ForgeDBVoteStore) {
+            const store = this.store;
+            store.use(() => {
+                const db = client.db;
+                if (!db)
+                    throw new Error("The database (ReForgeDB or ForgeDB) is not loaded");
+                return db;
             });
         }
         if (this.webhook && this.webhookOptions.listen !== false)

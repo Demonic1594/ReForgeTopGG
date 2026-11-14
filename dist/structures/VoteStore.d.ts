@@ -96,8 +96,8 @@ export declare class MemoryVoteStore implements VoteStore {
         reminded: boolean;
     }[];
 }
-/** Minimal shape of ForgeDB's DataBase class used here. */
-interface ForgeDBDataBase {
+/** What the "forgedb" store uses of the DataBase class of ReForgeDB and ForgeDB (the same in both). */
+export interface ForgeDBDataBase {
     get(data: {
         type: string;
         name: string;
@@ -119,15 +119,19 @@ interface ForgeDBDataBase {
     }>>;
 }
 /**
- * Keeps records in ForgeDB user variables (one JSON value per user, readable
- * with `$getUserVar[<name>;<user ID>]`). ForgeDB must be installed and loaded
- * as an extension; it is not a dependency of this package.
+ * Keeps records in user variables of ReForgeDB or ForgeDB, whichever the bot
+ * loaded (one JSON value per user, readable with `$getUserVar[<name>;<user ID>]`).
+ * The database extension must be loaded; it is not a dependency of this package.
+ * ReForgeTopGG points the store at `client.db` (the `DataBase` class both
+ * extensions put there) when it starts.
  */
 export declare class ForgeDBVoteStore implements VoteStore {
     readonly variable: string;
-    private readonly load;
+    private load;
     private db;
     constructor(variable?: string, load?: () => ForgeDBDataBase);
+    /** Reads and writes through this `DataBase` class (ReForgeDB's or ForgeDB's `client.db`). */
+    use(load: () => ForgeDBDataBase): void;
     /**
      * ForgeDB opens its database in the background after the bot starts. Wait for
      * it: briefly for a vote (the webhook must answer Top.gg within 5 s, and a
@@ -138,5 +142,4 @@ export declare class ForgeDBVoteStore implements VoteStore {
     set(record: VoteRecord): Promise<void>;
     pending(): Promise<VoteRecord[]>;
 }
-export {};
 //# sourceMappingURL=VoteStore.d.ts.map
