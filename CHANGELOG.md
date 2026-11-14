@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.1.0 (November 2026)
+
+Tag [`v2.1.0`](https://github.com/Demonic1594/ReForgeTopGG/releases/tag/v2.1.0) · [all changes since 2.0.0](https://github.com/Demonic1594/ReForgeTopGG/compare/7d83c55...v2.1.0)
+
+A hardening release from stress, abuse and fuzz testing 2.0.0. Each fix has a test that fails on 2.0.0. Install over 2.0.0; nothing to migrate.
+
+### Security
+- **A spammed `$hasVoted` could get the bot's Top.gg token blocked for an hour.** Top.gg blocks a token past 60 requests a minute to its bot endpoints (rate-limit docs), and every call was a request: 80 calls in a burst sent 80. Identical requests in flight now share one call, answers are reused briefly (voted 60 s, not voted 30 s, totals 60 s, weekend 5 min; a vote reaching the webhook clears that user's answer), and at most 50 requests a minute are sent; beyond that the call fails locally with an error `$try` can catch. Also applies to `$totalVotes`, `$monthlyVotes` and `$isVoteWeekend`.
+- **Slow clients were never cut off.** Node checks `headersTimeout` and `requestTimeout` only every 30 s by default; a client trickling headers kept its connection for 25 s and more in tests. The webhook server now checks every second (cut off after about 11 s).
+
+### Fixed
+- **A vote could be lost when its first delivery failed.** A repeat that arrived while the first delivery was still being stored was answered 204 and dropped; when the first then failed (500), Top.gg had no reason to deliver it again. A repeat now waits for the first delivery and fails with it.
+- **Two votes of one user at the same moment counted once.** The history was read and written without a lock, so concurrent votes (for a bot and a server, or two signed votes) overwrote each other. Updates are serialised per user.
+- **A throwing `error` listener crashed the bot** (from the server's error handler, as an uncaught exception), and **a throwing `voted` listener turned a stored vote into a 500**. Listener exceptions are logged instead.
+- **Pending reminders were lost when ForgeDB connected after the bot became ready.** The ForgeDB store now waits for the connection (up to 3 s for a vote, up to a minute when restoring reminders).
+- After a refused request answered before its body was read (for example a GET with a body), the client's next request on the same connection failed with "socket hang up" (found by the fuzzer). Such responses now close the connection.
+- A typo in `events` (e.g. `"vote"`) only logged "failed to load" and left the extension half set up. It now stops the bot at start-up with the list of events.
+
+### Changed
+- Values from `.env` and JSON configs work: a numeric string `port` (`port: process.env.PORT`), a numeric `auth`, and `null` for "not set" (`auth`, `token`, `webhook.secret`). An `auth` of another type gets a clear error instead of "auth is empty".
+- `$hasVoted` and every function taking a user ID accept mentions (`<@id>`, `<@!id>`) and surrounding spaces.
+- Signed deliveries may carry several `v1` signatures (as during a secret rotation); any one matching is enough.
+- A UTF-8 byte order mark before the JSON body is accepted.
+- Warnings in the log: `auth` with leading or trailing whitespace (a stray space or a Windows line ending in `.env`), commands added for an event that is not in `events` (they never run), and refused webhook requests (counted, at most once a minute).
+- The de-duplication cache holds 100,000 deliveries (was 10,000).
+- New exports: `TOPGG_API_BUDGET`, `TOPGG_EVENTS`, `KeyedLock`, `parseUserId`, `normalizeOptions`, `TopGGApi#clearCache()`.
+
+### Tests
+- 77 tests (61 before). New: `test/robustness.test.js` (13 abuse and race cases) and `test/fuzz.test.js`, a seeded fuzzer (3,000 mixed webhook requests per seed in concurrent bursts, vote histories against a reference model, every function with hostile arguments). 41 seeds were run before the release (about 123,000 requests).
+- Measured: 5,000 valid votes from distinct users, 100 at a time, in about 0.4 s; 5,000 forged requests emit nothing and leave the heap flat after garbage collection.
+
 ## 2.0.0 (November 2026)
 
 Tag [`v2.0.0`](https://github.com/Demonic1594/ReForgeTopGG/releases/tag/v2.0.0) · [all changes since ForgeTopGG 1.1.4](https://github.com/Demonic1594/ReForgeTopGG/compare/6a392b5...v2.0.0) · [switching guide](README.md#switching-from-forgetopgg)

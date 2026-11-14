@@ -13,11 +13,13 @@ import { applyVote, ForgeDBVoteStore, MemoryVoteStore, recordToVote, VoteRecord,
 import { ReminderScheduler } from "./structures/Reminders"
 import { TopGGApi } from "./structures/TopGGApi"
 import { DedupeCache, dedupeKey, TEST_DEDUPE_WINDOW } from "./structures/Dedupe"
+import { KeyedLock } from "./structures/KeyedLock"
 
 export * from "./structures/Vote"
 export * from "./structures/VoteWebhook"
 export * from "./structures/TopGGApi"
 export * from "./structures/Dedupe"
+export * from "./structures/KeyedLock"
 export * from "./structures/VoteStore"
 export * from "./structures/Reminders"
 
@@ -31,8 +33,8 @@ export const DEFAULT_DEDUPE_WINDOW = 3_600_000
 export const DEFAULT_STREAK_GRACE = 12 * 3_600_000
 
 export interface IWebhookOptions {
-    /** Port to listen on. Defaults to the top-level `port`, then 3000. */
-    port?: number
+    /** Port to listen on. Defaults to the top-level `port`, then 3000. A numeric string (from .env) works. */
+    port?: number | string
     /** Address to listen on. Defaults to all interfaces. */
     host?: string
     /** URL path Top.gg posts to. Defaults to `/dblwebhook`. */
@@ -49,19 +51,19 @@ export interface IWebhookOptions {
      * Top.gg. Signed deliveries are checked with it; the webhook starts when
      * this or `auth` is set.
      */
-    secret?: string
+    secret?: string | null
 }
 
 export interface IReForgeTopGGOptions {
     /** Your Top.gg API token. Needed for posting stats and the API functions. */
-    token?: string
+    token?: string | null
     /**
      * The webhook authorization you set on Top.gg. The webhook only starts
      * when this is set, and an empty value is refused.
      */
-    auth?: string
-    /** Port of the vote webhook. Same as `webhook.port`. Defaults to 3000. */
-    port?: number
+    auth?: string | number | null
+    /** Port of the vote webhook. Same as `webhook.port`. Defaults to 3000. A numeric string (from .env) works. */
+    port?: number | string
     /** Webhook settings, or `false` to never start the webhook. */
     webhook?: IWebhookOptions | false
     /** Post server counts to Top.gg. Requires `token`. */
@@ -134,30 +136,53 @@ export class ReForgeTopGG extends ForgeExtension {
     /** Top.gg API access for the API functions. */
     public readonly api: TopGGApi
     private poster: BasePoster | null = null
-    private readonly seen = new DedupeCache()
-    private readonly inFlight = new Set<string>()
+    private readonly seen = new DedupeCache(100_000)
+    /** Deliveries being processed, by dedupe key: a repeat waits for the first one's outcome. */
+    private readonly inFlight = new Map<string, Promise<boolean>>()
+    /** One history update per user at a time. */
+    private readonly userLock = new KeyedLock()
     private closed = false
     /** Where vote history is kept. */
     public readonly store: VoteStore
     private readonly reminders: ReminderScheduler | null
 
-    public constructor(public readonly options: IReForgeTopGGOptions = {}) {
+    /** The options, with values from .env or JSON configs normalized (see normalizeOptions). */
+    public readonly options: IReForgeTopGGOptions
+    private refused = { count: 0, since: 0, logged: 0 }
+
+    public constructor(rawOptions: IReForgeTopGGOptions = {}) {
         super()
+        const options = normalizeOptions(rawOptions)
         validateOptions(options)
-        this.api = new TopGGApi(options.token)
+        this.options = options
+        this.api = new TopGGApi(options.token ?? undefined)
         this.store = options.store === "forgedb"
             ? new ForgeDBVoteStore(options.storeVariable)
             : typeof options.store === "object" ? options.store : new MemoryVoteStore()
         this.reminders = options.reminders ? new ReminderScheduler((user, expiresAt) => void this.remind(user, expiresAt)) : null
         this.webhook = this.webhookEnabled
             ? new VoteWebhook({
-                auth: options.auth,
-                secret: this.webhookOptions.secret,
+                auth: options.auth as string | undefined,
+                secret: this.webhookOptions.secret ?? undefined,
                 maxBodySize: this.webhookOptions.maxBodySize,
                 onVote: (vote) => this.receive(vote),
                 onError: (err) => this.emitError(err),
+                onRefused: (reason) => this.noteRefused(reason),
             })
             : null
+    }
+
+    /**
+     * Refused requests are not events (anyone can send them), but a webhook that
+     * refuses everything usually means the secret does not match Top.gg's: log
+     * a count, at most once a minute.
+     */
+    private noteRefused(reason: string) {
+        const now = Date.now()
+        this.refused.count++
+        if (now - this.refused.logged < 60_000) return
+        Logger.warn(`ReForgeTopGG: refused ${this.refused.count} webhook request(s)${this.refused.logged ? " in the last minute" : ""} (last: ${reason}). If these are Top.gg's, the secret in your options does not match the one on Top.gg.`)
+        this.refused = { count: 0, since: now, logged: now }
     }
 
     private get webhookOptions(): IWebhookOptions {
@@ -192,6 +217,10 @@ export class ReForgeTopGG extends ForgeExtension {
         if (conflict) {
             throw new Error(`ReForgeTopGG cannot run alongside ${conflict.name}: both register $hasVoted, $voteUserID and the vote events. Remove ${conflict.name} from your extensions and uninstall it.`)
         }
+        const unknown = (this.options.events ?? []).filter((e) => !(TOPGG_EVENTS as readonly string[]).includes(e))
+        if (unknown.length) {
+            throw new Error(`ReForgeTopGG: unknown event${unknown.length > 1 ? "s" : ""} ${unknown.map((e) => `"${e}"`).join(", ")} in "events". The events are ${TOPGG_EVENTS.join(", ")}.`)
+        }
         if (this.options.store === "forgedb" && !client.options.extensions?.some((x) => x.name === "forge.db")) {
             throw new Error("ReForgeTopGG: store \"forgedb\" needs the ForgeDB extension (npm i @tryforge/forge.db, then add new ForgeDB() to your extensions).")
         }
@@ -220,7 +249,7 @@ export class ReForgeTopGG extends ForgeExtension {
                         if (!this.closed) start()
                     }
                     poster.on("error", (err) => this.emitError(err))
-                    poster.on("posted", (stats) => this.emitter.emit("posted", stats))
+                    poster.on("posted", (stats) => this.safeEmit("posted", stats))
                     this.poster = poster
                 } catch (err) {
                     this.emitError(new Error(`Top.gg stats posting could not start: ${(err as Error).message}`))
@@ -235,6 +264,18 @@ export class ReForgeTopGG extends ForgeExtension {
             // Reschedule reminders a persistent store still holds.
             this.client.once(readyEventName() as "ready", () => void this.restoreReminders())
         }
+        // Commands added for an event that is not in `events` never run: say so once.
+        this.client.once(readyEventName() as "ready", () => {
+            for (const name of TOPGG_EVENTS) {
+                if (this.commands.get(name).length && !this.options.events?.includes(name)) {
+                    Logger.warn(`ReForgeTopGG: there are ${name} commands, but "${name}" is not in the extension's events, so they never run. Add it to events: [...].`)
+                }
+            }
+        })
+        const auth = this.options.auth
+        if (typeof auth === "string" && auth !== auth.trim()) {
+            Logger.warn("ReForgeTopGG: \"auth\" starts or ends with whitespace (a stray space or a Windows line ending in .env?). Top.gg sends the value exactly as entered, so votes are refused if it differs.")
+        }
 
         // ForgeExtension has no shutdown hook: close with the client.
         const destroy = client.destroy.bind(client)
@@ -245,14 +286,16 @@ export class ReForgeTopGG extends ForgeExtension {
     }
 
     private listen() {
-        const port = this.webhookOptions.port ?? this.options.port ?? DEFAULT_PORT
+        const port = Number(this.webhookOptions.port ?? this.options.port ?? DEFAULT_PORT)
         const host = this.webhookOptions.host
         const path = this.webhookOptions.path ?? DEFAULT_PATH
-        const server = createServer((req, res) => {
+        // connectionsCheckingInterval: Node enforces the header and request timeouts
+        // only when it checks, every 30 s by default; slow clients are cut off sooner.
+        const server = createServer({ connectionsCheckingInterval: 1000 }, (req, res) => {
             const url = (req.url ?? "/").split("?")[0]
             if (url !== path) {
                 req.resume()
-                res.writeHead(404).end()
+                res.writeHead(404, req.complete ? {} : { connection: "close" }).end()
                 return
             }
             this.webhook!.listener(req, res)
@@ -283,23 +326,49 @@ export class ReForgeTopGG extends ForgeExtension {
      */
     public async receive(vote: Vote): Promise<boolean> {
         const key = dedupeKey(vote)
-        if (this.seen.has(key) || this.inFlight.has(key)) return false
-        this.inFlight.add(key)
+        if (this.seen.has(key)) return false
+        const running = this.inFlight.get(key)
+        if (running) {
+            // A repeat while the first delivery is still being stored. If that one
+            // fails, this one must fail too (Top.gg then delivers it again), or the
+            // vote would be lost.
+            await running
+            return false
+        }
+        const task = this.process(key, vote)
+        this.inFlight.set(key, task)
         try {
-            // Test votes are not history. A failed write throws, the webhook
-            // answers 500 and Top.gg delivers the vote again.
-            if (vote.type === "upvote") {
-                const record = applyVote(await this.store.get(vote.user), vote, this.streakGrace)
-                await this.store.set(record)
-                this.reminders?.schedule(record.user, record.expiresAt)
-            }
-            const window = this.options.dedupeWindow ?? DEFAULT_DEDUPE_WINDOW
-            this.seen.add(key, vote.type === "test" ? Math.min(window, TEST_DEDUPE_WINDOW) : window)
+            return await task
         } finally {
             this.inFlight.delete(key)
         }
-        this.emitter.emit("voted", vote)
+    }
+
+    private async process(key: string, vote: Vote): Promise<boolean> {
+        // Test votes are not history. A failed write throws, the webhook answers
+        // 500 and Top.gg delivers the vote again.
+        if (vote.type === "upvote") {
+            await this.userLock.run(vote.user, async () => {
+                const record = applyVote(await this.store.get(vote.user), vote, this.streakGrace)
+                await this.store.set(record)
+                this.reminders?.schedule(record.user, record.expiresAt)
+            })
+            this.api.forget(vote.user)
+        }
+        const window = this.options.dedupeWindow ?? DEFAULT_DEDUPE_WINDOW
+        this.seen.add(key, vote.type === "test" ? Math.min(window, TEST_DEDUPE_WINDOW) : window)
+        // The vote is stored: a failing listener must not turn it into a 500.
+        this.safeEmit("voted", vote)
         return true
+    }
+
+    /** Emits without letting a listener's exception escape (into the webhook, a timer or the server). */
+    private safeEmit<K extends keyof ITopGGEvents>(name: K, ...args: ITopGGEvents[K]) {
+        try {
+            ;(this.emitter.emit as (n: K, ...a: ITopGGEvents[K]) => boolean)(name, ...args)
+        } catch (err) {
+            Logger.error(`ReForgeTopGG: a ${name} listener threw: ${(err as Error)?.message ?? err}`)
+        }
     }
 
     public get streakGrace(): number {
@@ -319,7 +388,7 @@ export class ReForgeTopGG extends ForgeExtension {
             if (!record || record.reminded || record.expiresAt !== expiresAt) return
             record.reminded = true
             await this.store.set(record)
-            this.emitter.emit("voteReminder", recordToVote(record))
+            this.safeEmit("voteReminder", recordToVote(record))
         } catch (err) {
             this.emitError(new Error(`Vote reminder for ${user} failed: ${(err as Error).message}`))
         }
@@ -354,7 +423,7 @@ export class ReForgeTopGG extends ForgeExtension {
             : JSON.stringify({ user: options.user, bot: target, type: "test", isWeekend: !!options.weekend, query: options.query ?? "" })
         const headers: Record<string, string> = { "content-type": "application/json", "content-length": String(Buffer.byteLength(body)) }
         if (secret) headers["x-topgg-signature"] = signBody(body, secret, now)
-        else headers.authorization = this.options.auth!
+        else headers.authorization = String(this.options.auth)
         const host = address.address === "::" || address.address === "0.0.0.0" ? "127.0.0.1" : address.address
         return await new Promise<number>((resolve, reject) => {
             const req = request({ host, port: address.port, method: "POST", path: this.webhookOptions.path ?? DEFAULT_PATH, headers }, (res) => {
@@ -367,7 +436,7 @@ export class ReForgeTopGG extends ForgeExtension {
     }
 
     private emitError(err: Error) {
-        if (this.emitter.listenerCount("error") > 0) this.emitter.emit("error", err)
+        if (this.emitter.listenerCount("error") > 0) this.safeEmit("error", err)
         else Logger.error(err.message)
     }
 
@@ -393,13 +462,37 @@ export const ForgeTopGG = ReForgeTopGG
 /** @deprecated */
 export type ForgeTopGG = ReForgeTopGG
 
+/** The events the extension can emit. */
+export const TOPGG_EVENTS = ["voted", "voteReminder", "posted", "error"] as const
+
+/**
+ * Values that come from .env files or JSON configs, made usable: a numeric
+ * string port becomes a number, a numeric auth a string, and null means "not
+ * set". Anything else is left for validateOptions to refuse.
+ */
+export function normalizeOptions(raw: IReForgeTopGGOptions): IReForgeTopGGOptions {
+    const o: IReForgeTopGGOptions = { ...raw }
+    const port = (p: unknown) => (typeof p === "string" && /^\s*\d{1,5}\s*$/.test(p) ? Number(p) : p) as number | undefined
+    if (o.auth === null) delete o.auth
+    if (typeof o.auth === "number" && Number.isFinite(o.auth)) o.auth = String(o.auth)
+    if (o.token === null) delete o.token
+    if (o.port !== undefined) o.port = port(o.port)
+    if (o.webhook && typeof o.webhook === "object") {
+        o.webhook = { ...o.webhook }
+        if (o.webhook.port !== undefined) o.webhook.port = port(o.webhook.port)
+        if (o.webhook.secret === null) delete o.webhook.secret
+    }
+    return o
+}
+
 function validateOptions(o: IReForgeTopGGOptions) {
     const fail = (msg: string) => { throw new Error(`ReForgeTopGG: ${msg}`) }
-    if (o.auth !== undefined && (typeof o.auth !== "string" || o.auth.trim() === "")) {
+    if (o.auth !== undefined && typeof o.auth !== "string") fail(`"auth" must be text, got ${typeof o.auth}`)
+    if (typeof o.auth === "string" && o.auth.trim() === "") {
         fail("\"auth\" is empty. Anyone could send fake votes to an unprotected webhook. Set it to the authorization you entered on Top.gg, or remove it to turn the webhook off.")
     }
     const port = (o.webhook || {}).port ?? o.port
-    if (port !== undefined && (!Number.isInteger(port) || port < 0 || port > 65535)) fail(`"port" must be a whole number from 0 to 65535, got ${port}`)
+    if (port !== undefined && (!Number.isInteger(port) || (port as number) < 0 || (port as number) > 65535)) fail(`"port" must be a whole number from 0 to 65535, got ${JSON.stringify(port)}`)
     const w = o.webhook || {}
     if (w.secret !== undefined && (typeof w.secret !== "string" || w.secret.trim() === "")) fail("\"webhook.secret\" is empty. Set it to the secret shown on your project's Webhooks page on Top.gg, or remove it.")
     if (o.store !== undefined && o.store !== "memory" && o.store !== "forgedb" && !(o.store && typeof o.store === "object" && typeof o.store.get === "function" && typeof o.store.set === "function")) {

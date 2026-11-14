@@ -12,6 +12,7 @@ export * from "./structures/Vote";
 export * from "./structures/VoteWebhook";
 export * from "./structures/TopGGApi";
 export * from "./structures/Dedupe";
+export * from "./structures/KeyedLock";
 export * from "./structures/VoteStore";
 export * from "./structures/Reminders";
 /** Top.gg refuses to be posted to more often than every 15 minutes. */
@@ -23,8 +24,8 @@ export declare const DEFAULT_DEDUPE_WINDOW = 3600000;
 /** A streak continues when the next vote comes at most this long after the user could vote again. */
 export declare const DEFAULT_STREAK_GRACE: number;
 export interface IWebhookOptions {
-    /** Port to listen on. Defaults to the top-level `port`, then 3000. */
-    port?: number;
+    /** Port to listen on. Defaults to the top-level `port`, then 3000. A numeric string (from .env) works. */
+    port?: number | string;
     /** Address to listen on. Defaults to all interfaces. */
     host?: string;
     /** URL path Top.gg posts to. Defaults to `/dblwebhook`. */
@@ -41,18 +42,18 @@ export interface IWebhookOptions {
      * Top.gg. Signed deliveries are checked with it; the webhook starts when
      * this or `auth` is set.
      */
-    secret?: string;
+    secret?: string | null;
 }
 export interface IReForgeTopGGOptions {
     /** Your Top.gg API token. Needed for posting stats and the API functions. */
-    token?: string;
+    token?: string | null;
     /**
      * The webhook authorization you set on Top.gg. The webhook only starts
      * when this is set, and an empty value is refused.
      */
-    auth?: string;
-    /** Port of the vote webhook. Same as `webhook.port`. Defaults to 3000. */
-    port?: number;
+    auth?: string | number | null;
+    /** Port of the vote webhook. Same as `webhook.port`. Defaults to 3000. A numeric string (from .env) works. */
+    port?: number | string;
     /** Webhook settings, or `false` to never start the webhook. */
     webhook?: IWebhookOptions | false;
     /** Post server counts to Top.gg. Requires `token`. */
@@ -97,7 +98,6 @@ export type TransformEvents<T> = {
  */
 export declare function readyEventName(): string;
 export declare class ReForgeTopGG extends ForgeExtension {
-    readonly options: IReForgeTopGGOptions;
     name: string;
     description: string;
     version: any;
@@ -112,12 +112,24 @@ export declare class ReForgeTopGG extends ForgeExtension {
     readonly api: TopGGApi;
     private poster;
     private readonly seen;
+    /** Deliveries being processed, by dedupe key: a repeat waits for the first one's outcome. */
     private readonly inFlight;
+    /** One history update per user at a time. */
+    private readonly userLock;
     private closed;
     /** Where vote history is kept. */
     readonly store: VoteStore;
     private readonly reminders;
-    constructor(options?: IReForgeTopGGOptions);
+    /** The options, with values from .env or JSON configs normalized (see normalizeOptions). */
+    readonly options: IReForgeTopGGOptions;
+    private refused;
+    constructor(rawOptions?: IReForgeTopGGOptions);
+    /**
+     * Refused requests are not events (anyone can send them), but a webhook that
+     * refuses everything usually means the secret does not match Top.gg's: log
+     * a count, at most once a minute.
+     */
+    private noteRefused;
     private get webhookOptions();
     private get webhookEnabled();
     /**
@@ -138,6 +150,9 @@ export declare class ReForgeTopGG extends ForgeExtension {
      * webhook mounted elsewhere, or a test, can feed votes in.
      */
     receive(vote: Vote): Promise<boolean>;
+    private process;
+    /** Emits without letting a listener's exception escape (into the webhook, a timer or the server). */
+    private safeEmit;
     get streakGrace(): number;
     /** The vote history of a user, if any. */
     getRecord(user: string): Promise<VoteRecord | undefined>;
@@ -161,4 +176,12 @@ export declare class ReForgeTopGG extends ForgeExtension {
 export declare const ForgeTopGG: typeof ReForgeTopGG;
 /** @deprecated */
 export type ForgeTopGG = ReForgeTopGG;
+/** The events the extension can emit. */
+export declare const TOPGG_EVENTS: readonly ["voted", "voteReminder", "posted", "error"];
+/**
+ * Values that come from .env files or JSON configs, made usable: a numeric
+ * string port becomes a number, a numeric auth a string, and null means "not
+ * set". Anything else is left for validateOptions to refuse.
+ */
+export declare function normalizeOptions(raw: IReForgeTopGGOptions): IReForgeTopGGOptions;
 //# sourceMappingURL=index.d.ts.map

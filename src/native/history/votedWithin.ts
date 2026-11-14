@@ -18,7 +18,7 @@ export default new NativeFunction({
         },
         {
             name: "user ID",
-            description: "The user, defaults to the voter in vote events and to the author elsewhere",
+            description: "The user (an ID or a mention), defaults to the voter in vote events and to the author elsewhere",
             rest: false,
             type: ArgType.String,
         },

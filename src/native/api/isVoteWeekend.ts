@@ -8,7 +8,7 @@ export default new NativeFunction({
     unwrap: false,
     output: ArgType.Boolean,
     async execute(ctx) {
-        const result = await ctx.getExtension(ReForgeTopGG, true).api.request((api) => api.isWeekend())
+        const result = await ctx.getExtension(ReForgeTopGG, true).api.isWeekend()
         return result.ok ? this.success(!!result.value) : this.customError(result.error)
     },
 })

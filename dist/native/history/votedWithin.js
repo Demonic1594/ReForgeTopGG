@@ -19,7 +19,7 @@ exports.default = new forgescript_1.NativeFunction({
         },
         {
             name: "user ID",
-            description: "The user, defaults to the voter in vote events and to the author elsewhere",
+            description: "The user (an ID or a mention), defaults to the voter in vote events and to the author elsewhere",
             rest: false,
             type: forgescript_1.ArgType.String,
         },

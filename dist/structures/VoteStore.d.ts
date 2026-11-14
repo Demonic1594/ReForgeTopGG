@@ -128,6 +128,11 @@ export declare class ForgeDBVoteStore implements VoteStore {
     private readonly load;
     private db;
     constructor(variable?: string, load?: () => ForgeDBDataBase);
+    /**
+     * ForgeDB opens its database in the background after the bot starts. Wait for
+     * it: briefly for a vote (the webhook must answer Top.gg within 5 s, and a
+     * failure makes Top.gg deliver it again), longer when restoring reminders.
+     */
     private database;
     get(user: string): Promise<VoteRecord | undefined>;
     set(record: VoteRecord): Promise<void>;

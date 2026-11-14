@@ -12,7 +12,7 @@ exports.default = new forgescript_1.NativeFunction({
     args: [
         {
             name: "user ID",
-            description: "The user to check",
+            description: "The user to check: an ID or a mention",
             rest: false,
             required: true,
             type: forgescript_1.ArgType.String,
@@ -20,9 +20,10 @@ exports.default = new forgescript_1.NativeFunction({
     ],
     output: forgescript_1.ArgType.Boolean,
     async execute(ctx, [user]) {
-        if (!(0, Vote_1.isSnowflake)(user))
-            return this.customError(`"${user}" is not a user ID`);
-        const result = await ctx.getExtension(__1.ReForgeTopGG, true).api.request((api) => api.hasVoted(user));
+        const id = (0, Vote_1.parseUserId)(user);
+        if (!id)
+            return this.customError(`"${user}" is not a user ID or mention`);
+        const result = await ctx.getExtension(__1.ReForgeTopGG, true).api.hasVoted(id);
         return result.ok ? this.success(result.value) : this.customError(result.error);
     },
 });

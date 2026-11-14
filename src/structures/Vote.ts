@@ -46,13 +46,18 @@ export function isSnowflake(value: unknown): value is string {
     return typeof value === "string" && SNOWFLAKE.test(value)
 }
 
+/** A user ID as people write it in commands: `123...`, ` 123... `, `<@123...>` or `<@!123...>`. */
+export function parseUserId(raw: string): string | null {
+    const id = raw.trim().replace(/^<@!?(\d+)>$/, "$1")
+    return isSnowflake(id) ? id : null
+}
+
 export function parseQuery(raw: unknown): Record<string, string> {
     if (raw === undefined || raw === null || raw === "") return {}
     if (typeof raw === "string") return Object.fromEntries(new URLSearchParams(raw))
     if (typeof raw === "object" && !Array.isArray(raw)) {
-        const out: Record<string, string> = {}
-        for (const [k, v] of Object.entries(raw)) if (typeof v === "string") out[k] = v
-        return out
+        // fromEntries defines own properties, so a "__proto__" key stays a plain key
+        return Object.fromEntries(Object.entries(raw).filter((e): e is [string, string] => typeof e[1] === "string"))
     }
     throw new Error("query must be a string")
 }

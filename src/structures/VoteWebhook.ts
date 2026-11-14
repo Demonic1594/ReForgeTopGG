@@ -21,6 +21,8 @@ export interface IVoteWebhookOptions {
     onVote: (vote: Vote) => unknown
     /** Called for authenticated deliveries that could not be used. */
     onError?: (err: Error) => void
+    /** Called for each request refused for a wrong or missing secret or signature. */
+    onRefused?: (reason: string) => void
     /** Clock, for tests. */
     now?: () => number
 }
@@ -50,19 +52,24 @@ export function safeEqual(received: string | undefined, expected: string): boole
  * Returns the reason it fails, or `null` when it is valid.
  */
 export function checkSignature(headerValue: string, raw: Buffer, secret: string, now: number): string | null {
-    const parts: Record<string, string> = {}
+    let ts: string | undefined
+    const sigs: string[] = []
     for (const part of headerValue.split(",")) {
         const i = part.indexOf("=")
-        if (i > 0) parts[part.slice(0, i).trim()] = part.slice(i + 1).trim()
+        if (i <= 0) continue
+        const key = part.slice(0, i).trim()
+        const value = part.slice(i + 1).trim()
+        if (key === "t") ts = value
+        // several v1 values (e.g. while a secret is rotated): any one may match
+        else if (key === "v1" && /^[0-9a-f]{64}$/i.test(value)) sigs.push(value)
     }
-    const t = Number(parts.t)
-    const sig = parts.v1
-    if (!Number.isInteger(t) || !sig || !/^[0-9a-f]+$/i.test(sig)) return "Invalid signature format"
+    const t = Number(ts)
+    if (!ts || !/^\d{1,12}$/.test(ts) || !sigs.length || sigs.length > 8) return "Invalid signature format"
     if (Math.abs(now - t * 1000) > SIGNATURE_TOLERANCE) return "Signature timestamp outside the accepted window"
-    const expected = createHmac("sha256", secret).update(`${parts.t}.`).update(raw).digest()
-    const given = Buffer.from(sig, "hex")
-    if (given.length !== expected.length || !timingSafeEqual(given, expected)) return "Invalid signature"
-    return null
+    const expected = createHmac("sha256", secret).update(`${ts}.`).update(raw).digest()
+    let match = false
+    for (const sig of sigs) match = timingSafeEqual(Buffer.from(sig, "hex"), expected) || match
+    return match ? null : "Invalid signature"
 }
 
 /** Signs a body the way Top.gg does, for tests and local development. */
@@ -106,8 +113,11 @@ export function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
     })
 }
 
-function send(res: ServerResponse, status: number, body?: object) {
+function send(res: ServerResponse, status: number, body?: object, req?: IncomingMessage) {
     if (res.headersSent) return
+    // Answered before the request body was read: the connection must not be
+    // reused (a client reusing it got "socket hang up" on its next request).
+    if (req && !req.complete) res.setHeader("connection", "close")
     if (body) {
         const json = JSON.stringify(body)
         res.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(json) })
@@ -143,20 +153,21 @@ export class VoteWebhook {
         if (req.method !== "POST") {
             res.setHeader("allow", "POST")
             req.resume()
-            return send(res, 405, { error: "Method not allowed" })
+            return send(res, 405, { error: "Method not allowed" }, req)
         }
 
         const signature = header(req, "x-topgg-signature")
         const signed = signature !== undefined
         if (signed ? !this.options.secret : !this.options.auth || !safeEqual(header(req, "authorization"), this.options.auth)) {
             req.resume()
-            return send(res, 401, { error: "Unauthorized" })
+            this.options.onRefused?.(signed ? "a signed request, but no webhook.secret is set" : "a wrong or missing Authorization header")
+            return send(res, 401, { error: "Unauthorized" }, req)
         }
 
         const type = header(req, "content-type")?.split(";")[0].trim().toLowerCase()
         if (type !== "application/json") {
             req.resume()
-            return send(res, 415, { error: "Content-Type must be application/json" })
+            return send(res, 415, { error: "Content-Type must be application/json" }, req)
         }
 
         let body: unknown
@@ -174,14 +185,18 @@ export class VoteWebhook {
                 raw = await readBody(req, this.maxBodySize)
             } catch (err) {
                 const e = err as WebhookRequestError
-                return send(res, e.status ?? 400, { error: e.message })
+                return send(res, e.status ?? 400, { error: e.message }, req)
             }
             if (signed) {
                 const failure = checkSignature(signature, raw, this.options.secret!, this.now())
-                if (failure) return send(res, 401, { error: failure })
+                if (failure) {
+                    this.options.onRefused?.(failure.toLowerCase())
+                    return send(res, 401, { error: failure })
+                }
             }
             try {
-                body = JSON.parse(raw.toString("utf8"))
+                // a UTF-8 byte order mark some proxies add is not part of the JSON
+                body = JSON.parse(raw.toString("utf8").replace(/^\uFEFF/, ""))
             } catch {
                 return send(res, 400, { error: "Invalid JSON" })
             }

@@ -38,6 +38,8 @@ export interface Vote {
     source: "v0" | "v1";
 }
 export declare function isSnowflake(value: unknown): value is string;
+/** A user ID as people write it in commands: `123...`, ` 123... `, `<@123...>` or `<@!123...>`. */
+export declare function parseUserId(raw: string): string | null;
 export declare function parseQuery(raw: unknown): Record<string, string>;
 /**
  * Validates a legacy (v0) webhook body and turns it into a {@link Vote}.
