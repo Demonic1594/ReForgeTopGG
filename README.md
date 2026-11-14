@@ -31,12 +31,12 @@ ReForgeTopGG is a hardened Top.gg extension for ForgeScript. Post your bot's ser
 
 <h3 align="center">Why ReForgeTopGG</h3><hr>
 
-- 🔒 **No fake votes.** The webhook refuses to start without a secret, compares it in constant time, and checks the signature of Top.gg's current (v1) webhooks.
-- 🔁 **Each vote once.** Top.gg delivers a vote again when it gets no answer in time; repeats are dropped, so rewards are not handed out twice.
-- 🧯 **No surprises in production.** Nothing listens until the extension starts, a port in use is an error event instead of a crash, and `client.destroy()` closes the server.
-- ❗ **Honest API answers.** `$hasVoted` fails with an error when Top.gg can't be reached, instead of returning something that looks like "not voted" (or, with `==false`, like "voted").
-- 📈 **Vote history.** Count, weekend points, streaks, last and next vote time, kept in memory or in ForgeDB, plus a reminder event when someone can vote again.
-- 🧪 **Test without Top.gg.** `$sendTestVote` sends a vote through your own webhook, exactly like Top.gg does.
+- **No fake votes.** The webhook refuses to start without a secret, compares it in constant time, and checks the signature of Top.gg's current (v1) webhooks.
+- **Each vote once.** Top.gg delivers a vote again when it gets no answer in time; repeats are dropped, so rewards are not handed out twice.
+- **No surprises in production.** Nothing listens until the extension starts, a port in use is an error event instead of a crash, and `client.destroy()` closes the server.
+- **Honest API answers.** `$hasVoted` fails with an error when Top.gg can't be reached, instead of returning something that looks like "not voted" (or, with `==false`, like "voted").
+- **Vote history.** Count, weekend points, streaks, last and next vote time, kept in memory or in ForgeDB, plus a reminder event when someone can vote again.
+- **Test without Top.gg.** `$sendTestVote` sends a vote through your own webhook, exactly like Top.gg does.
 
 <details>
 <summary><b>Everything fixed compared to ForgeTopGG 1.1.4</b></summary>
