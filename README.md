@@ -22,10 +22,12 @@ ReForgeTopGG is a hardened Top.gg extension for ForgeScript. Post your bot's ser
 7. [Vote History, Streaks and Reminders](#vote-history-streaks-and-reminders)
 8. [Testing Votes](#testing-votes)
 9. [Security](#security)
-10. [Switching from ForgeTopGG](#switching-from-forgetopgg)
-11. [Notes and Limits](#notes-and-limits)
-12. [Development](#development)
-13. [Credits and License](#credits-and-license)
+10. [Errors, Logging and Debugging](#errors-logging-and-debugging)
+11. [Switching from ForgeTopGG](#switching-from-forgetopgg)
+12. [Upgrading from 2.x](#upgrading-from-2x)
+13. [Notes and Limits](#notes-and-limits)
+14. [Development](#development)
+15. [Credits and License](#credits-and-license)
 
 <h3 align="center">Why ReForgeTopGG</h3><hr>
 
@@ -135,6 +137,8 @@ Both kinds can be enabled at once. Use the dashboard's test button, or `$sendTes
 | `storeVariable` | `topggVote` | ForgeDB user variable used by `store: "forgedb"` |
 | `streakGrace` | `43200000` | A vote continues the streak when it comes at most this long (12 hours) after the user could vote again |
 | `reminders` | `false` | Fire `voteReminder` when a voter can vote again |
+| `reminderMaxDelay` | `43200000` | A reminder that came due while the bot was offline is still sent after a restart if it is at most this late (12 hours); older ones are dropped. At least `60000` |
+| `logLevel` | `info` | `silent`, `error`, `warn`, `info`, `debug` or `trace`; also the `REFORGETOPGG_LOG_LEVEL` environment variable |
 
 The webhook starts when `auth` or `webhook.secret` is set. Without either, the extension only posts stats and answers API functions, and opens no port.
 
@@ -237,6 +241,10 @@ A **streak** grows by one when a vote comes at most `streakGrace` (12 hours by d
 
 **Reminders** (`reminders: true`) fire `voteReminder` once, when the 12 hours of a vote are over. A newer vote moves the reminder. With a store that has `pending()` (memory and ForgeDB do), reminders that were still due are scheduled again when the bot is ready.
 
+A reminder that came due while the bot was offline is sent when the bot is back, if it is at most `reminderMaxDelay` (12 hours) late. Older ones are dropped and marked as sent, and their number is logged: a bot that was off for a week, or that turns `reminders` on for the first time with a long history in its store, does not send a flood of "you can vote again" messages about votes from long ago.
+
+ReForgeTopGG warns at start-up when `voteReminder` is in `events` but `reminders` is off (the event would never fire), and when `reminders` is on but nothing listens to `voteReminder`.
+
 <h3 align="center">Testing Votes</h3><hr>
 
 - `$sendTestVote[$authorID]` sends a test vote to your own webhook over HTTP, with your secret (signed if `webhook.secret` is set), and returns the status. Your `voted` commands run with `$voteType` = `test`.
@@ -258,6 +266,25 @@ Check `$voteType` before giving rewards if your test command is public.
 - Two deliveries of one user are stored one after the other, never interleaved; a repeat that arrives while the first delivery is still being stored waits for it, and fails too if it fails, so Top.gg delivers the vote again instead of losing it.
 - A listener that throws (in your JavaScript) is logged; it never fails a stored vote or crashes the bot.
 
+<h3 align="center">Errors, Logging and Debugging</h3><hr>
+
+Everything ReForgeTopGG prints starts with `[ReForgeTopGG]`, and so do the errors of its options (which stop the bot at start-up) and of its functions (which `$try` catches). Errors handed to your `error` event keep their original message.
+
+`logLevel` (or the `REFORGETOPGG_LOG_LEVEL` environment variable) sets what is written to the console:
+
+| Level | Shows |
+|---|---|
+| `silent` | Nothing |
+| `error` | Votes that could not be stored, a webhook that could not start, failed reminders |
+| `warn` | Also configuration problems and refused webhook requests (counted, at most once a minute) |
+| `info` (default) | Also start-up messages and reminders dropped after a restart |
+| `debug` | Also every vote (accepted or dropped as a repeat, with the time to store it), reminder and Top.gg API request (answered, from cache, shared, or refused by the budget) |
+| `trace` | Also every webhook request with its answer: `POST /dblwebhook -> 204 (1.2 ms)` |
+
+Turn on `debug` without touching the code: `REFORGETOPGG_LOG_LEVEL=debug node index.js`.
+
+No level ever writes `auth`, `webhook.secret` or `token`, an `Authorization` or signature header, or a request body.
+
 <h3 align="center">Switching from ForgeTopGG</h3><hr>
 
 1. Uninstall the original and install ReForgeTopGG:
@@ -265,7 +292,7 @@ Check `$voteType` before giving rewards if your test command is public.
     npm uninstall @tryforge/forge.topgg
     npm i github:Demonic1594/ReForgeTopGG
     ```
-2. Change `require("@tryforge/forge.topgg")` to `require("@tryforge/reforge.topgg")`, and `ForgeTopGG` to `ReForgeTopGG` (the old name still works).
+2. Change `require("@tryforge/forge.topgg")` to `require("@tryforge/reforge.topgg")`, and `ForgeTopGG` to `ReForgeTopGG`.
 3. Your options, commands, events and functions keep working, with these differences:
     - An empty `auth` stops the bot at start-up. Without `auth` the webhook does not start at all.
     - `$hasVoted`, `$totalVotes` and `$monthlyVotes` stop the command with an error when Top.gg can't be reached. Wrap them in `$try[...;fallback]` where you want a fallback.
@@ -274,6 +301,16 @@ Check `$voteType` before giving rewards if your test command is public.
     - Wrong `Authorization` gets `401` (was `403`).
 
 Both packages cannot be loaded at once: they register the same functions and events. ReForgeTopGG stops at start-up if `forge.topgg` is also in your extensions. The extension registers itself as `reforge.topgg`.
+
+<h3 align="center">Upgrading from 2.x</h3><hr>
+
+3.0.0 changes three things your code may notice; options, commands, events and functions are otherwise the same.
+
+1. **The `ForgeTopGG` and `IForgeTopGGOptions` names are gone.** Use `ReForgeTopGG` and `IReForgeTopGGOptions`. `require("@tryforge/reforge.topgg").ForgeTopGG` is `undefined` now, so `new ForgeTopGG(...)` fails with "ForgeTopGG is not a constructor".
+2. **Messages start with `[ReForgeTopGG]`** (they started with `ReForgeTopGG:` or nothing), in the console, in option errors and in function errors. Update anything that matches on their text.
+3. **Old reminders are dropped after a restart.** A reminder more than 12 hours late is no longer sent; set `reminderMaxDelay` to keep a longer window.
+
+CI now tests Node.js 22 and 24. `package.json` still allows Node.js 18.17 and newer, but versions below 22 are no longer tested; ForgeScript 2.8 itself needs Node.js 22.
 
 <h3 align="center">Notes and Limits</h3><hr>
 
@@ -296,7 +333,7 @@ npm run docgen     # regenerate metadata/*.json
 
 The tests start a real ForgeClient (it never logs in) with the extension on a random port, send real HTTP requests to the webhook, and run ForgeScript code through the real interpreter. Top.gg is never contacted: the API client is stubbed. The ForgeDB store is tested on SQLite.
 
-`test/fuzz.test.js` is a seeded fuzzer: thousands of mixed requests (valid legacy and signed votes, retries, forged secrets, mutated signatures, broken bodies, wrong types, odd methods, paths and headers) sent in concurrent bursts, checking that each vote is emitted exactly once and the history matches what was accepted; vote histories against a reference model; and every function with hostile arguments. Replay a seed with `FUZZ_SEED=42 npm test`, or run more with `FUZZ_ROUNDS=20000`. `test/robustness.test.js` holds the abuse and race cases found by stress-testing 2.0.0.
+`test/fuzz.test.js` is a seeded fuzzer: thousands of mixed requests (valid legacy and signed votes, retries, forged secrets, mutated signatures, broken bodies, wrong types, odd methods, paths and headers) sent in concurrent bursts, checking that each vote is emitted exactly once and the history matches what was accepted; vote histories against a reference model; and every function with hostile arguments. Replay a seed with `FUZZ_SEED=42 npm test`, or run more with `FUZZ_ROUNDS=20000`. `test/robustness.test.js` holds the abuse and race cases found by stress-testing 2.0.0, and `test/v3.test.js` the fixes and conventions of 3.0.0.
 
 #### Releasing
 

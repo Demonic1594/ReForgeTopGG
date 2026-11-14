@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const forgescript_1 = require("@tryforge/forgescript");
 const __1 = require("../..");
 const Vote_1 = require("../../structures/Vote");
+const Logger_1 = require("../../structures/Logger");
 exports.default = new forgescript_1.NativeFunction({
     name: "$hasVoted",
     version: "1.0.0",
@@ -22,7 +23,7 @@ exports.default = new forgescript_1.NativeFunction({
     async execute(ctx, [user]) {
         const id = (0, Vote_1.parseUserId)(user);
         if (!id)
-            return this.customError(`"${user}" is not a user ID or mention`);
+            return this.customError((0, Logger_1.prefixed)(`"${user}" is not a user ID or mention`));
         const result = await ctx.getExtension(__1.ReForgeTopGG, true).api.hasVoted(id);
         return result.ok ? this.success(result.value) : this.customError(result.error);
     },

@@ -8,6 +8,7 @@ import { VoteWebhook } from "./structures/VoteWebhook";
 import { Vote } from "./structures/Vote";
 import { VoteRecord, VoteStore } from "./structures/VoteStore";
 import { TopGGApi } from "./structures/TopGGApi";
+import { LogLevel } from "./structures/Logger";
 export * from "./structures/Vote";
 export * from "./structures/VoteWebhook";
 export * from "./structures/TopGGApi";
@@ -15,6 +16,7 @@ export * from "./structures/Dedupe";
 export * from "./structures/KeyedLock";
 export * from "./structures/VoteStore";
 export * from "./structures/Reminders";
+export * from "./structures/Logger";
 /** Top.gg refuses to be posted to more often than every 15 minutes. */
 export declare const MIN_POST_INTERVAL = 900000;
 export declare const DEFAULT_PORT = 3000;
@@ -23,6 +25,10 @@ export declare const DEFAULT_PATH = "/dblwebhook";
 export declare const DEFAULT_DEDUPE_WINDOW = 3600000;
 /** A streak continues when the next vote comes at most this long after the user could vote again. */
 export declare const DEFAULT_STREAK_GRACE: number;
+/** A reminder that came due while the bot was offline is still sent when it is at most this late. */
+export declare const DEFAULT_REMINDER_MAX_DELAY: number;
+/** The smallest `reminderMaxDelay`: timers fire a little late, and a restart takes a while. */
+export declare const MIN_REMINDER_MAX_DELAY = 60000;
 export interface IWebhookOptions {
     /** Port to listen on. Defaults to the top-level `port`, then 3000. A numeric string (from .env) works. */
     port?: number | string;
@@ -85,9 +91,21 @@ export interface IReForgeTopGGOptions {
      * Defaults to `false`.
      */
     reminders?: boolean;
+    /**
+     * A reminder that came due while the bot was offline is still sent after a
+     * restart when it is at most this many ms late. Older ones are dropped and
+     * marked as sent, so a restart never sends a flood of stale reminders.
+     * Defaults to 12 hours, at least 60000 (1 minute).
+     */
+    reminderMaxDelay?: number;
+    /**
+     * What is written to the console: `silent`, `error`, `warn`, `info`
+     * (default), `debug` (every vote, reminder and API request) or `trace`
+     * (also every webhook request). Secrets are never written. The
+     * `REFORGETOPGG_LOG_LEVEL` environment variable sets it when this is not given.
+     */
+    logLevel?: LogLevel;
 }
-/** @deprecated Use {@link IReForgeTopGGOptions}. */
-export type IForgeTopGGOptions = IReForgeTopGGOptions;
 export type TransformEvents<T> = {
     [P in keyof T]: T[P] extends any[] ? (...args: T[P]) => any : never;
 };
@@ -156,6 +174,13 @@ export declare class ReForgeTopGG extends ForgeExtension {
     get streakGrace(): number;
     /** The vote history of a user, if any. */
     getRecord(user: string): Promise<VoteRecord | undefined>;
+    /** How late a reminder may be and still be sent. */
+    get reminderMaxDelay(): number;
+    /**
+     * Sends the reminder of the vote that ends at `expiresAt`, once, or drops it
+     * when it is more than `reminderMaxDelay` late. Returns whether it was sent.
+     * Holds the user's lock: a vote stored meanwhile is never overwritten.
+     */
     private remind;
     private restoreReminders;
     /**
@@ -172,10 +197,6 @@ export declare class ReForgeTopGG extends ForgeExtension {
     /** Stops the webhook server and stats posting. Called by `client.destroy()`. */
     close(): Promise<void>;
 }
-/** @deprecated Kept so code written for forge.topgg keeps working. Use {@link ReForgeTopGG}. */
-export declare const ForgeTopGG: typeof ReForgeTopGG;
-/** @deprecated */
-export type ForgeTopGG = ReForgeTopGG;
 /** The events the extension can emit. */
 export declare const TOPGG_EVENTS: readonly ["voted", "voteReminder", "posted", "error"];
 /**
@@ -184,4 +205,6 @@ export declare const TOPGG_EVENTS: readonly ["voted", "voteReminder", "posted", 
  * set". Anything else is left for validateOptions to refuse.
  */
 export declare function normalizeOptions(raw: IReForgeTopGGOptions): IReForgeTopGGOptions;
+/** A duration for log messages: "45 s", "12 min", "3.5 h", "60 days". */
+export declare function formatDuration(ms: number): string;
 //# sourceMappingURL=index.d.ts.map

@@ -1,5 +1,6 @@
 import { ArgType, NativeFunction } from "@tryforge/forgescript"
 import { ReForgeTopGG } from "../.."
+import { prefixed } from "../../structures/Logger"
 
 export default new NativeFunction({
     name: "$totalVotes",
@@ -9,10 +10,10 @@ export default new NativeFunction({
     output: ArgType.Number,
     async execute(ctx) {
         const id = ctx.client.user?.id
-        if (!id) return this.customError("The bot is not logged in yet")
+        if (!id) return this.customError(prefixed("The bot is not logged in yet"))
         const result = await ctx.getExtension(ReForgeTopGG, true).api.getBot(id)
         if (!result.ok) return this.customError(result.error)
         const value = result.value?.points
-        return typeof value === "number" ? this.success(value) : this.customError("Top.gg API returned no points")
+        return typeof value === "number" ? this.success(value) : this.customError(prefixed("Top.gg API returned no points"))
     },
 })

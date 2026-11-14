@@ -73,7 +73,7 @@ test("options from .env and JSON configs: numeric strings, numbers and null", as
 test("an unknown event name stops the bot with the list of events", () => {
     assert.throws(
         () => new ForgeClient({ intents: ["Guilds"], events: [], prefixes: ["!"], extensions: [new lib.ReForgeTopGG({ webhook: false, events: ["vote"] })] }),
-        /unknown event "vote" in "events". The events are voted, voteReminder, posted, error/,
+        /unknown event "vote" in "events". The events are voted, voteReminder, posted, error/i,
     )
 })
 
@@ -140,9 +140,9 @@ test("refused requests are logged once a minute, never echoed, never emitted", a
     const b = await start()
     logs.length = 0
     for (let i = 0; i < 5; i++) await vote(b.port(), upvote(), { authorization: "nope" })
-    const warns = logs.filter((l) => l.text.includes("refused"))
+    const warns = logs.filter((l) => /refused/i.test(l.text))
     assert.equal(warns.length, 1)
-    assert.match(warns[0].text, /refused 1 webhook request/)
+    assert.match(warns[0].text, /refused 1 webhook request/i)
     assert.ok(!warns[0].text.includes("nope"))
     assert.equal(b.emitted.length, 0)
 })
@@ -153,7 +153,7 @@ test("warnings for whitespace in auth and for commands of events that are not lo
     b.top.commands.add({ type: "voted", code: "$log[x]" })
     b.client.emit("clientReady", b.client)
     assert.ok(logs.some((l) => l.text.includes("whitespace")))
-    assert.ok(logs.some((l) => l.text.includes("there are voted commands, but \"voted\" is not in the extension's events")))
+    assert.ok(logs.some((l) => /there are voted commands, but "voted" is not in the extension's events/i.test(l.text)))
 })
 
 test("the ForgeDB store waits for ForgeDB to connect instead of failing at once", async () => {

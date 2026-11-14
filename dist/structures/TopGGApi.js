@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TopGGApi = exports.API_CACHE_TTL = exports.TOPGG_API_WINDOW = exports.TOPGG_API_BUDGET = void 0;
 const sdk_1 = require("@top-gg/sdk");
+const Logger_1 = require("./Logger");
 /**
  * Top.gg blocks a token for an hour once it sends more than 60 requests a
  * minute to /bots/* (its rate-limit docs). The extension stays below that with
@@ -50,7 +51,11 @@ class TopGGApi {
     }
     /** Drops a user's cached $hasVoted answer (their vote just arrived). */
     forget(user) {
-        this.cache.delete(`voted:${user}`);
+        const key = `voted:${user}`;
+        this.cache.delete(key);
+        // A request already on its way was answered before the vote: its answer
+        // must neither be cached nor handed to callers that ask from now on.
+        this.pending.delete(key);
     }
     prune() {
         const from = this.now() - exports.TOPGG_API_WINDOW;
@@ -59,13 +64,19 @@ class TopGGApi {
     }
     async cached(key, ttl, call) {
         const hit = this.cache.get(key);
-        if (hit && hit.expires > this.now())
+        if (hit && hit.expires > this.now()) {
+            Logger_1.ReForgeTopGGLogger.debug(`Top.gg API ${key}: answered from cache`);
             return { ok: true, value: hit.value };
+        }
         const running = this.pending.get(key);
-        if (running)
+        if (running) {
+            Logger_1.ReForgeTopGGLogger.debug(`Top.gg API ${key}: sharing a request in flight`);
             return running;
-        const task = this.request(call).then((r) => {
-            if (r.ok) {
+        }
+        const task = this.request(call, key).then((r) => {
+            // Only the request that is still the current one for this key may
+            // fill the cache (forget() may have replaced it meanwhile).
+            if (r.ok && this.pending.get(key) === task) {
                 this.cache.delete(key);
                 this.cache.set(key, { value: r.value, expires: this.now() + ttl(r.value) });
                 while (this.cache.size > CACHE_MAX)
@@ -78,26 +89,32 @@ class TopGGApi {
             return await task;
         }
         finally {
-            this.pending.delete(key);
+            if (this.pending.get(key) === task)
+                this.pending.delete(key);
         }
     }
-    async request(call) {
+    async request(call, label = "request") {
         if (!this.client)
-            return { ok: false, error: "Top.gg API request failed: no \"token\" was set in the ReForgeTopGG options" };
+            return { ok: false, error: (0, Logger_1.prefixed)("Top.gg API request failed: no \"token\" was set in the ReForgeTopGG options") };
         this.prune();
         if (this.sent.length >= exports.TOPGG_API_BUDGET) {
             const wait = Math.ceil((this.sent[0] + exports.TOPGG_API_WINDOW - this.now()) / 1000);
-            return { ok: false, error: `Top.gg API request not sent: ${this.sent.length} requests in the last minute (Top.gg blocks the token for an hour past 60). Try again in ${wait} s` };
+            Logger_1.ReForgeTopGGLogger.warn(`Top.gg API ${label}: not sent, ${this.sent.length} requests in the last minute`);
+            return { ok: false, error: (0, Logger_1.prefixed)(`Top.gg API request not sent: ${this.sent.length} requests in the last minute (Top.gg blocks the token for an hour past 60). Try again in ${wait} s`) };
         }
         this.sent.push(this.now());
+        const started = performance.now();
         try {
-            return { ok: true, value: await call(this.client) };
+            const value = await call(this.client);
+            Logger_1.ReForgeTopGGLogger.debug(`Top.gg API ${label}: answered in ${(performance.now() - started).toFixed(0)} ms (${this.sent.length} of ${exports.TOPGG_API_BUDGET} requests this minute)`);
+            return { ok: true, value };
         }
         catch (err) {
             let message = err instanceof Error ? err.message : String(err);
             if (this.token)
                 message = message.split(this.token).join("[token]");
-            return { ok: false, error: `Top.gg API request failed: ${message}` };
+            Logger_1.ReForgeTopGGLogger.debug(`Top.gg API ${label}: failed after ${(performance.now() - started).toFixed(0)} ms: ${message}`);
+            return { ok: false, error: (0, Logger_1.prefixed)(`Top.gg API request failed: ${message}`) };
         }
     }
 }

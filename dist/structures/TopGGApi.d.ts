@@ -45,6 +45,6 @@ export declare class TopGGApi {
     forget(user: string): void;
     private prune;
     private cached;
-    request<T>(call: (api: Api) => Promise<T>): Promise<ApiResult<T>>;
+    request<T>(call: (api: Api) => Promise<T>, label?: string): Promise<ApiResult<T>>;
 }
 //# sourceMappingURL=TopGGApi.d.ts.map

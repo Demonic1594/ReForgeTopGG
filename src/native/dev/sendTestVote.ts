@@ -1,6 +1,7 @@
 import { ArgType, NativeFunction } from "@tryforge/forgescript"
 import { ReForgeTopGG } from "../.."
 import { resolveUser } from "../../structures/resolveUser"
+import { prefixed } from "../../structures/Logger"
 
 export default new NativeFunction({
     name: "$sendTestVote",
@@ -35,7 +36,7 @@ export default new NativeFunction({
         try {
             return this.success(await ctx.getExtension(ReForgeTopGG, true).sendTestVote({ user: user.id, weekend: !!weekend, query: query ?? undefined }))
         } catch (err) {
-            return this.customError(`Test vote failed: ${(err as Error).message}`)
+            return this.customError(prefixed(`Test vote failed: ${(err as Error).message.replace(/^\[ReForgeTopGG\] /, "")}`))
         }
     },
 })

@@ -1,6 +1,7 @@
 import { ArgType, NativeFunction } from "@tryforge/forgescript"
 import { ReForgeTopGG } from "../.."
 import { parseUserId } from "../../structures/Vote"
+import { prefixed } from "../../structures/Logger"
 
 export default new NativeFunction({
     name: "$hasVoted",
@@ -20,7 +21,7 @@ export default new NativeFunction({
     output: ArgType.Boolean,
     async execute(ctx, [user]) {
         const id = parseUserId(user)
-        if (!id) return this.customError(`"${user}" is not a user ID or mention`)
+        if (!id) return this.customError(prefixed(`"${user}" is not a user ID or mention`))
         const result = await ctx.getExtension(ReForgeTopGG, true).api.hasVoted(id)
         return result.ok ? this.success(result.value) : this.customError(result.error)
     },
