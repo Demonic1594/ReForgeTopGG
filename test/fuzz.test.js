@@ -154,9 +154,9 @@ test(`fuzz vote history against a reference model (seed ${SEED})`, () => {
 
 test(`fuzz every function with hostile arguments (seed ${SEED})`, async () => {
     const { run, logs } = require("./fixtures/harness")
-    const { Api } = require("@top-gg/sdk")
-    const real = Api.prototype._request
-    Api.prototype._request = async () => { throw new Error("503 Service Unavailable") }
+    const { TopGGClient: Api } = require("..")
+    const real = Api.prototype.request
+    Api.prototype.request = async () => { throw new Error("503 Service Unavailable") }
     try {
         const fns = require("../metadata/functions.json")
         const r = rng(SEED + 2)
@@ -179,6 +179,6 @@ test(`fuzz every function with hostile arguments (seed ${SEED})`, async () => {
             assert.deepEqual(internal.map((l) => l.text.slice(0, 200)), [], `${code} hit an internal error`)
         }
     } finally {
-        Api.prototype._request = real
+        Api.prototype.request = real
     }
 })

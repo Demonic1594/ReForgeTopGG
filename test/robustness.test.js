@@ -5,7 +5,7 @@ const assert = require("node:assert/strict")
 const net = require("net")
 const http = require("http")
 const { once } = require("events")
-const { Api } = require("@top-gg/sdk")
+const { TopGGClient: Api } = require("..")
 const { ForgeClient } = require("@tryforge/forgescript")
 const { boot, run, vote, request, upvote, logs, USER, BOT } = require("./fixtures/harness")
 const lib = require("..")
@@ -79,7 +79,7 @@ test("an unknown event name stops the bot with the list of events", () => {
 
 test("$hasVoted bursts share one request; Top.gg's 60/min limit is never reached", async (t) => {
     let sent = 0
-    t.mock.method(Api.prototype, "_request", async (_m, _p, body) => { sent++; return { voted: body?.userId === USER ? 1 : 0 } })
+    t.mock.method(Api.prototype, "request", async (_m, _p, body) => { sent++; return { voted: body?.userId === USER ? 1 : 0 } })
     const b = await start({ webhook: false })
     await Promise.all(Array.from({ length: 80 }, () => run(b.client, `$hasVoted[${USER}]`)))
     assert.equal(sent, 1, "2.0.0 sent 80 requests (Top.gg blocks the token for an hour past 60)")
@@ -93,7 +93,7 @@ test("$hasVoted bursts share one request; Top.gg's 60/min limit is never reached
 
 test("a vote reaching the webhook clears that user's cached $hasVoted answer", async (t) => {
     let voted = false
-    t.mock.method(Api.prototype, "_request", async () => ({ voted: voted ? 1 : 0 }))
+    t.mock.method(Api.prototype, "request", async () => ({ voted: voted ? 1 : 0 }))
     const b = await start()
     assert.equal(await run(b.client, `$hasVoted[${USER}]`), "false")
     voted = true

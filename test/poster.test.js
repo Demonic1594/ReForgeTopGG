@@ -1,7 +1,7 @@
 "use strict"
 const { test } = require("node:test")
 const assert = require("node:assert/strict")
-const { Api } = require("@top-gg/sdk")
+const { TopGGClient: Api } = require("..")
 const { boot } = require("./fixtures/harness")
 
 test("stats posting starts once on ready, reports posted and errors, and stops on destroy", async (t) => {
@@ -35,9 +35,9 @@ test("listens to clientReady, not the deprecated ready event (discord.js 14.22+)
     b.client.emit("clientReady", b.client)
     const poster = b.top.poster
     assert.ok(poster, "posting starts on clientReady")
-    // destroyed before topgg-autoposter's own start ran: it must not start afterwards
+    // destroyed before the poster started: it must not start afterwards
     await b.client.destroy()
     await new Promise((r) => setImmediate(r))
     assert.equal(poster.started, false, "no interval left running after destroy")
-    assert.ok(!poster.interval, "no interval timer")
+    assert.equal(poster.scheduled, false, "no timer left")
 })

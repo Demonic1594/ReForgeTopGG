@@ -20,7 +20,7 @@ exports.normalizeOptions = normalizeOptions;
 exports.formatDuration = formatDuration;
 const forgescript_1 = require("@tryforge/forgescript");
 const http_1 = require("http");
-const topgg_autoposter_1 = require("topgg-autoposter");
+const StatsPoster_1 = require("./structures/StatsPoster");
 const tiny_typed_emitter_1 = require("tiny-typed-emitter");
 const constants_1 = require("./constants");
 const TopGGCommandManager_1 = require("./structures/TopGGCommandManager");
@@ -36,6 +36,8 @@ const Logger_1 = require("./structures/Logger");
 __exportStar(require("./structures/Vote"), exports);
 __exportStar(require("./structures/VoteWebhook"), exports);
 __exportStar(require("./structures/TopGGApi"), exports);
+__exportStar(require("./structures/TopGGClient"), exports);
+__exportStar(require("./structures/StatsPoster"), exports);
 __exportStar(require("./structures/Dedupe"), exports);
 __exportStar(require("./structures/KeyedLock"), exports);
 __exportStar(require("./structures/VoteStore"), exports);
@@ -189,21 +191,15 @@ class ReForgeTopGG extends forgescript_1.ForgeExtension {
                 if (this.closed || this.poster)
                     return;
                 try {
-                    const poster = (0, topgg_autoposter_1.AutoPoster)(this.options.token, ready, post);
-                    // topgg-autoposter starts its interval a microtask after it is created; a close()
-                    // in between would stop nothing and the interval would keep the process alive.
-                    const start = poster.start.bind(poster);
-                    poster.start = () => {
-                        if (!this.closed)
-                            start();
-                    };
+                    const poster = new StatsPoster_1.StatsPoster(this.options.token, ready, post);
                     poster.on("error", (err) => this.emitError(err));
                     poster.on("posted", (stats) => {
                         Logger_1.ReForgeTopGGLogger.debug(`stats posted to Top.gg: ${stats.serverCount} servers${stats.shardCount ? `, ${stats.shardCount} shards` : ""}`);
                         this.safeEmit("posted", stats);
                     });
                     this.poster = poster;
-                    Logger_1.ReForgeTopGGLogger.info(`Posting stats to Top.gg every ${Math.round((post.interval ?? exports.MIN_POST_INTERVAL) / 60_000)} minutes`);
+                    if (poster.start())
+                        Logger_1.ReForgeTopGGLogger.info(`Posting stats to Top.gg every ${Math.round(poster.interval / 60_000)} minutes`);
                 }
                 catch (err) {
                     this.emitError(new Error(`Top.gg stats posting could not start: ${(0, Logger_1.errorMessage)(err)}`));

@@ -1,4 +1,4 @@
-import { Api } from "@top-gg/sdk"
+import { TopGGClient } from "./TopGGClient"
 import { prefixed, ReForgeTopGGLogger as log } from "./Logger"
 
 export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: string }
@@ -21,13 +21,13 @@ const CACHE_MAX = 10_000
  * instead of getting the token blocked. The token is never part of a message.
  */
 export class TopGGApi {
-    public readonly client: Api | null
+    public readonly client: TopGGClient | null
     private readonly sent: number[] = []
     private readonly cache = new Map<string, { value: unknown; expires: number }>()
     private readonly pending = new Map<string, Promise<ApiResult<unknown>>>()
 
     constructor(private readonly token?: string, private readonly now: () => number = Date.now) {
-        this.client = token ? new Api(token) : null
+        this.client = token ? new TopGGClient(token) : null
     }
 
     /** Requests Top.gg has been sent in the current window. */
@@ -67,7 +67,7 @@ export class TopGGApi {
         while (this.sent.length && this.sent[0] <= from) this.sent.shift()
     }
 
-    private async cached<T>(key: string, ttl: (value: T) => number, call: (api: Api) => Promise<T>): Promise<ApiResult<T>> {
+    private async cached<T>(key: string, ttl: (value: T) => number, call: (api: TopGGClient) => Promise<T>): Promise<ApiResult<T>> {
         const hit = this.cache.get(key)
         if (hit && hit.expires > this.now()) {
             log.debug(`Top.gg API ${key}: answered from cache`)
@@ -96,7 +96,7 @@ export class TopGGApi {
         }
     }
 
-    async request<T>(call: (api: Api) => Promise<T>, label = "request"): Promise<ApiResult<T>> {
+    async request<T>(call: (api: TopGGClient) => Promise<T>, label = "request"): Promise<ApiResult<T>> {
         if (!this.client) return { ok: false, error: prefixed("Top.gg API request failed: no \"token\" was set in the ReForgeTopGG options") }
         this.prune()
         if (this.sent.length >= TOPGG_API_BUDGET) {

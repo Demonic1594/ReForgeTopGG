@@ -1,8 +1,6 @@
 import { EventManager, ForgeClient, ForgeExtension } from "@tryforge/forgescript"
 import { createServer, IncomingMessage, request, Server, ServerResponse } from "http"
-import { AutoPoster as autoPoster } from "topgg-autoposter"
-import type { PosterOptions } from "topgg-autoposter/dist/typings"
-import type { BasePoster } from "topgg-autoposter/dist/structs/BasePoster"
+import { PosterOptions, StatsPoster } from "./structures/StatsPoster"
 import { TypedEmitter } from "tiny-typed-emitter"
 import { TopGGEventManagerName } from "./constants"
 import { TopGGCommandManager } from "./structures/TopGGCommandManager"
@@ -20,6 +18,8 @@ import { errorMessage, isLogLevel, LOG_LEVELS, LogLevel, prefixed, ReForgeTopGGL
 export * from "./structures/Vote"
 export * from "./structures/VoteWebhook"
 export * from "./structures/TopGGApi"
+export * from "./structures/TopGGClient"
+export * from "./structures/StatsPoster"
 export * from "./structures/Dedupe"
 export * from "./structures/KeyedLock"
 export * from "./structures/VoteStore"
@@ -155,7 +155,7 @@ export class ReForgeTopGG extends ForgeExtension {
     public server: Server | null = null
     /** Top.gg API access for the API functions. */
     public readonly api: TopGGApi
-    private poster: BasePoster | null = null
+    private poster: StatsPoster | null = null
     private readonly seen = new DedupeCache(100_000)
     /** Deliveries being processed, by dedupe key: a repeat waits for the first one's outcome. */
     private readonly inFlight = new Map<string, Promise<boolean>>()
@@ -267,20 +267,14 @@ export class ReForgeTopGG extends ForgeExtension {
             this.client.once(readyEventName() as "ready", (ready) => {
                 if (this.closed || this.poster) return
                 try {
-                    const poster = autoPoster(this.options.token!, ready, post)
-                    // topgg-autoposter starts its interval a microtask after it is created; a close()
-                    // in between would stop nothing and the interval would keep the process alive.
-                    const start = poster.start.bind(poster)
-                    poster.start = () => {
-                        if (!this.closed) start()
-                    }
+                    const poster = new StatsPoster(this.options.token!, ready, post)
                     poster.on("error", (err) => this.emitError(err))
                     poster.on("posted", (stats) => {
                         log.debug(`stats posted to Top.gg: ${stats.serverCount} servers${stats.shardCount ? `, ${stats.shardCount} shards` : ""}`)
                         this.safeEmit("posted", stats)
                     })
                     this.poster = poster
-                    log.info(`Posting stats to Top.gg every ${Math.round((post.interval ?? MIN_POST_INTERVAL) / 60_000)} minutes`)
+                    if (poster.start()) log.info(`Posting stats to Top.gg every ${Math.round(poster.interval / 60_000)} minutes`)
                 } catch (err) {
                     this.emitError(new Error(`Top.gg stats posting could not start: ${errorMessage(err)}`))
                 }

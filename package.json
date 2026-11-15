@@ -1,6 +1,6 @@
 {
   "name": "@tryforge/reforge.topgg",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "ReForgeTopGG: a hardened Top.gg extension for ForgeScript. Posts bot stats and receives votes safely (required secret, signed v1 webhooks, de-duplicated retries), with vote history, streaks and reminders. Fork of tryforge/ForgeTopGG.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -29,9 +29,7 @@
   "author": "ruben40000 (original), Demonic1594 (fork)",
   "license": "GPL-3.0",
   "dependencies": {
-    "@top-gg/sdk": "^3.1.6",
-    "tiny-typed-emitter": "^2.1.0",
-    "topgg-autoposter": "^2.0.2"
+    "tiny-typed-emitter": "^2.1.0"
   },
   "devDependencies": {
     "@tryforge/forge.db": "^2.1.1",

@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TopGGApi = exports.API_CACHE_TTL = exports.TOPGG_API_WINDOW = exports.TOPGG_API_BUDGET = void 0;
-const sdk_1 = require("@top-gg/sdk");
+const TopGGClient_1 = require("./TopGGClient");
 const Logger_1 = require("./Logger");
 /**
  * Top.gg blocks a token for an hour once it sends more than 60 requests a
@@ -29,7 +29,7 @@ class TopGGApi {
     constructor(token, now = Date.now) {
         this.token = token;
         this.now = now;
-        this.client = token ? new sdk_1.Api(token) : null;
+        this.client = token ? new TopGGClient_1.TopGGClient(token) : null;
     }
     /** Requests Top.gg has been sent in the current window. */
     get used() {

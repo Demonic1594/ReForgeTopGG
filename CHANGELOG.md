@@ -1,5 +1,26 @@
 # Changelog
 
+## 3.2.0 (November 2026)
+
+Tag [`v3.2.0`](https://github.com/Demonic1594/ReForgeTopGG/releases/tag/v3.2.0) · [all changes since 3.1.0](https://github.com/Demonic1594/ReForgeTopGG/compare/v3.1.0...v3.2.0) · [upgrade notes](README.md#upgrading-from-2x)
+
+**No more undici 5 in your bot.** `@top-gg/sdk` 3.x and `topgg-autoposter` are gone. The extension now calls Top.gg with Node.js's built-in `fetch`, which also clears the high-severity `@fastify/busboy` advisories `npm audit` showed. Nothing to change in your bot.
+
+### Why
+`@top-gg/sdk` 3.1.6 requires undici ^5.23.0. Every undici 5 release has open advisories, and so does the `@fastify/busboy` 2.x it brings; only undici 6.29.1 and newer fix them. An npm override in this package cannot help: npm only reads overrides from the bot's own `package.json`. A bot that installed 3.1.0 still got undici 5.29.0 and busboy 2.1.1 (checked with the packed package in a fresh project). @top-gg/sdk 4 needs neither, but it is ESM-only, uses Top.gg's v1 API and needs Node.js 18.18.2.
+
+### Changed
+- `TopGGClient` (exported) makes the four calls the extension uses ($hasVoted, $totalVotes / $monthlyVotes, $isVoteWeekend, stats posting) with the requests, answers and error messages of @top-gg/sdk 3.x (`401 Unauthorized (You need a token for this endpoint)` and so on). Requests time out after 15 seconds and do not follow redirects. Before, a hung connection waited for undici's 5-minute default.
+- `StatsPoster` (exported) replaces topgg-autoposter for the discord.js client: same options (`interval`, `postOnStart`, `startPosting`, `sdk`), same 5-second first post, same 30-minute default. Its timers are unref'd, and `client.destroy()` also cancels a first post that is still waiting.
+- `TopGGApi#client` is a `TopGGClient` instead of @top-gg/sdk's `Api`. It has the same `hasVoted`, `getBot`, `isWeekend` and `postStats` methods. Code that used other `Api` methods through it should install @top-gg/sdk itself.
+- `BotStats`, `PosterOptions` and `TopGGAPIError` (with `status` and the answer's `body`) are exported, so types no longer come from the two removed packages.
+
+### Fixed
+- The start-up log said "Posting stats to Top.gg every 15 minutes" when no `interval` was set, while posts went out every 30. It now names the interval in use.
+
+### Tests
+- `test/http.test.js` runs the client against a real local HTTP server. It covers the requests sent, answers, error messages, invalid JSON, a server that never answers, redirects and a closed port. It also runs `$hasVoted` and `$isVoteWeekend` through the client, and stats posting over HTTP. One test fails while a production dependency brings in @top-gg/sdk, @fastify/busboy or undici older than 6.29.1, and one fails on the wrong interval in the log; both fail on 3.1.0. 107 tests (99 before).
+
 ## 3.1.0 (November 2026)
 
 Tag [`v3.1.0`](https://github.com/Demonic1594/ReForgeTopGG/releases/tag/v3.1.0) · [all changes since 3.0.0](https://github.com/Demonic1594/ReForgeTopGG/compare/v3.0.0...v3.1.0) · [upgrade notes](README.md#upgrading-from-2x)
