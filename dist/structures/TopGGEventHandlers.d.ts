@@ -1,4 +1,4 @@
-import { BotStats } from "@top-gg/sdk";
+import type { BotStats } from "./TopGGClient";
 import { BaseEventHandler, ForgeClient } from "@tryforge/forgescript";
 import { Vote } from "./Vote";
 export interface ITopGGEvents {

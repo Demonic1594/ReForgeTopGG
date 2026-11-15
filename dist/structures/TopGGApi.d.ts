@@ -1,4 +1,4 @@
-import { Api } from "@top-gg/sdk";
+import { TopGGClient } from "./TopGGClient";
 export type ApiResult<T> = {
     ok: true;
     value: T;
@@ -29,7 +29,7 @@ export declare const API_CACHE_TTL: {
 export declare class TopGGApi {
     private readonly token?;
     private readonly now;
-    readonly client: Api | null;
+    readonly client: TopGGClient | null;
     private readonly sent;
     private readonly cache;
     private readonly pending;
@@ -37,7 +37,7 @@ export declare class TopGGApi {
     /** Requests Top.gg has been sent in the current window. */
     get used(): number;
     hasVoted(user: string): Promise<ApiResult<boolean>>;
-    getBot(id: string): Promise<ApiResult<import("@top-gg/sdk").BotInfo>>;
+    getBot(id: string): Promise<ApiResult<any>>;
     isWeekend(): Promise<ApiResult<boolean>>;
     /** Forgets every cached answer (the request budget is kept). */
     clearCache(): void;
@@ -45,6 +45,6 @@ export declare class TopGGApi {
     forget(user: string): void;
     private prune;
     private cached;
-    request<T>(call: (api: Api) => Promise<T>, label?: string): Promise<ApiResult<T>>;
+    request<T>(call: (api: TopGGClient) => Promise<T>, label?: string): Promise<ApiResult<T>>;
 }
 //# sourceMappingURL=TopGGApi.d.ts.map

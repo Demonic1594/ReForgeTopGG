@@ -68,7 +68,7 @@ Each row was reproduced on 1.1.4 (or read in its source) and has a test in `test
     ```
 
     > ℹ️ **Note**\
-    > The compiled code is committed, so no build step is needed. The command above follows `main`; to pin a release, add its tag, e.g. `npm i github:Demonic1594/ReForgeTopGG#v3.1.0`. All releases are listed under [tags](https://github.com/Demonic1594/ReForgeTopGG/tags).
+    > The compiled code is committed, so no build step is needed. The command above follows `main`; to pin a release, add its tag, e.g. `npm i github:Demonic1594/ReForgeTopGG#v3.2.0`. All releases are listed under [tags](https://github.com/Demonic1594/ReForgeTopGG/tags).
 
 2. Here's an example of how your main file should look:
     ```js
@@ -130,7 +130,7 @@ Both kinds can be enabled at once. Use the dashboard's test button, or `$sendTes
 | `webhook.listen` | `true` | `false` opens no port; mount `topgg.webhookListener` on your own server |
 | `webhook.maxBodySize` | `16384` | Largest accepted body, in bytes |
 | `webhook` | on | `false` never starts the webhook |
-| `post` | off | Post the server count: `{ interval }` in ms, at least `900000` (15 minutes); needs `token` |
+| `post` | off | Post the server count: `{ interval }` in ms, at least `900000` (15 minutes), default `1800000` (30 minutes); `postOnStart: false` waits a full interval for the first post; needs `token` |
 | `events` | `[]` | Events your commands listen to |
 | `dedupeWindow` | `3600000` | A repeat of the same vote within this many ms is dropped; `0` turns it off; at most 11 hours |
 | `store` | `"memory"` | Vote history: `"memory"`, `"reforgedb"` (`"forgedb"` is the same) or your own `{ get, set, pending? }` |
@@ -304,6 +304,8 @@ Both packages cannot be loaded at once: they register the same functions and eve
 
 <h3 align="center">Upgrading from 2.x</h3><hr>
 
+**3.2.0** needs no changes. `@top-gg/sdk` and `topgg-autoposter` are no longer installed (run `npm prune` to remove them); the extension calls Top.gg with Node.js's built-in `fetch`. Only code that reached @top-gg/sdk's `Api` through `TopGGApi#client` for methods other than `hasVoted`, `getBot`, `isWeekend` and `postStats` has to install @top-gg/sdk itself.
+
 **3.1.0** needs no changes. `store: "forgedb"` keeps working and now also works with [ReForgeDB](https://github.com/Demonic1594/ReForgeDB); `"reforgedb"` is the new name. Switching from ForgeDB to ReForgeDB with your vote history: see "Switching from ForgeDB" in ReForgeDB's README (your variables, `topggVote` included, carry over). `ForgeDBVoteStore` is now called `DatabaseVoteStore`; the old name still works.
 
 3.0.0 changes three things your code may notice; options, commands, events and functions are otherwise the same.
@@ -319,8 +321,8 @@ CI now tests Node.js 22 and 24. `package.json` still allows Node.js 18.17 and ne
 - The vote cooldown is 12 hours. Legacy deliveries carry no expiry, so `$nextVoteTime` is the time the vote arrived plus 12 hours; v1 deliveries carry Top.gg's own `expires_at`.
 - Legacy deliveries carry no vote ID, so a repeat is recognised by voter, target and type. A real second vote can only come 12 hours later, outside the 1-hour window.
 - Test votes are collapsed for at most 1 minute, so the test button works again right away.
-- Stats posting starts on discord.js's `clientReady` event (`ready` on discord.js before 14.22) and uses `topgg-autoposter`: it posts this process's guild count, with `shardId`/`shardCount` from discord.js. It needs `discord.js` to be the same copy ForgeScript uses (a single `npm i` does that).
-- The API functions use Top.gg's legacy API through `@top-gg/sdk` 3.x. @top-gg/sdk 4.0.0 (August 2026) moved to the v1 API and is ESM-only; this extension does not use it yet.
+- Stats posting starts on discord.js's `clientReady` event (`ready` on discord.js before 14.22): it posts this process's guild count, with `shardId`/`shardCount` from discord.js. It needs `discord.js` to be the same copy ForgeScript uses (a single `npm i` does that).
+- The API functions and stats posting call Top.gg's legacy API (the routes @top-gg/sdk 3.x used) with Node.js's built-in `fetch`, with a 15-second timeout and no redirects. Since 3.2.0 neither `@top-gg/sdk` nor `topgg-autoposter` is installed: both brought undici 5, whose advisories (and those of its `@fastify/busboy`) only a newer undici fixes. On Node.js 18, `fetch` prints a one-time ExperimentalWarning; Node.js 21 and newer do not.
 - ForgeScript only logs errors thrown while an extension starts and keeps going, so ReForgeTopGG checks its options when it is created and its conflicts before it starts, where an error does stop the bot.
 
 <h3 align="center">Development</h3><hr>

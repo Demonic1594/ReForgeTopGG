@@ -1,4 +1,4 @@
-import type { BotStats } from "@top-gg/sdk"
+import type { BotStats } from "./TopGGClient"
 
 /** The posted stats an event is running for, or `undefined` elsewhere. */
 export function currentStats(extras: unknown): BotStats | undefined {

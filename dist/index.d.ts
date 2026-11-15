@@ -1,6 +1,6 @@
 import { ForgeClient, ForgeExtension } from "@tryforge/forgescript";
 import { IncomingMessage, Server, ServerResponse } from "http";
-import type { PosterOptions } from "topgg-autoposter/dist/typings";
+import { PosterOptions } from "./structures/StatsPoster";
 import { TypedEmitter } from "tiny-typed-emitter";
 import { TopGGCommandManager } from "./structures/TopGGCommandManager";
 import { ITopGGEvents } from "./structures/TopGGEventHandlers";
@@ -12,6 +12,8 @@ import { LogLevel } from "./structures/Logger";
 export * from "./structures/Vote";
 export * from "./structures/VoteWebhook";
 export * from "./structures/TopGGApi";
+export * from "./structures/TopGGClient";
+export * from "./structures/StatsPoster";
 export * from "./structures/Dedupe";
 export * from "./structures/KeyedLock";
 export * from "./structures/VoteStore";
