@@ -1,15 +1,31 @@
 name: Release
 
-# Pushing a tag like v3.1.0 publishes the GitHub release for it. The notes
-# come from .github/release-notes/<tag>.md when that file exists, otherwise
-# from the version's section of CHANGELOG.md.
+# Pushing a tag like v1.2.3 publishes the GitHub release for it. Running this
+# workflow by hand (Actions > Release > Run workflow) publishes the release for
+# one tag, or, with no tag given, for every v*.*.* tag that has none yet.
+#
+# The notes come from .github/release-notes/<tag>.md (on the default branch,
+# then at the tag) when that file exists, otherwise from the version's section
+# of CHANGELOG.md at the tag. A tag whose package.json version differs is
+# refused. An existing release is never changed. Only the highest version is
+# marked Latest, so back-filling old tags does not move it.
 
 on:
   push:
     tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish, like v1.2.3 (empty: every tag without a release)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 env:
   NAME: ReForgeTopGG
@@ -19,31 +35,52 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check that the tag matches package.json
-        run: |
-          version="$(node -p 'require("./package.json").version')"
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match the package.json version $version"
-            exit 1
-          fi
-      - name: Write the release notes
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          if [ -f ".github/release-notes/$GITHUB_REF_NAME.md" ]; then
-            cp ".github/release-notes/$GITHUB_REF_NAME.md" notes.md
-          else
-            awk -v h="## $version" 'index($0, h " ") == 1 || $0 == h { found = 1; next } found && /^## / { exit } found { print }' CHANGELOG.md > notes.md
-          fi
-          if ! grep -q '[^[:space:]]' notes.md; then
-            echo "::error::No release notes for $GITHUB_REF_NAME (no .github/release-notes/$GITHUB_REF_NAME.md and no \"## $version\" section in CHANGELOG.md)"
-            exit 1
-          fi
-      - name: Publish the release
+        with:
+          fetch-depth: 0
+      - name: Publish the releases
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            echo "The release $GITHUB_REF_NAME already exists; leaving it as it is."
-            exit 0
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            tags="$GITHUB_REF_NAME"
+          elif [ -n "$INPUT_TAG" ]; then
+            tags="$INPUT_TAG"
+          else
+            tags="$(git tag -l 'v*.*.*' --sort=v:refname)"
           fi
-          gh release create "$GITHUB_REF_NAME" --title "$NAME $GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+          highest="$(git tag -l 'v*.*.*' --sort=-v:refname | head -n 1)"
+          failed=0
+          for tag in $tags; do
+            if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || ! git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+              echo "::error::$tag is not a v<x.y.z> tag in this repository"
+              failed=1
+              continue
+            fi
+            if gh release view "$tag" > /dev/null 2>&1; then
+              echo "The release $tag already exists; leaving it as it is."
+              continue
+            fi
+            version="$(git show "$tag:package.json" | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).version')"
+            if [ "v$version" != "$tag" ]; then
+              echo "::error::Tag $tag does not match the package.json version $version at that tag"
+              failed=1
+              continue
+            fi
+            if [ -f ".github/release-notes/$tag.md" ]; then
+              cp ".github/release-notes/$tag.md" notes.md
+            elif git cat-file -e "$tag:.github/release-notes/$tag.md" 2> /dev/null; then
+              git show "$tag:.github/release-notes/$tag.md" > notes.md
+            else
+              git show "$tag:CHANGELOG.md" | awk -v h="## $version" 'index($0, h " ") == 1 || $0 == h { found = 1; next } found && /^## / { exit } found { print }' > notes.md
+            fi
+            if ! grep -q '[^[:space:]]' notes.md; then
+              echo "::error::No release notes for $tag (no .github/release-notes/$tag.md and no \"## $version\" section in CHANGELOG.md at the tag)"
+              failed=1
+              continue
+            fi
+            if [ "$tag" = "$highest" ]; then latest=true; else latest=false; fi
+            gh release create "$tag" --title "$NAME $tag" --notes-file notes.md --verify-tag --latest="$latest"
+            echo "Published $tag (latest: $latest)"
+          done
+          exit "$failed"
