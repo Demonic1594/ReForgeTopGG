@@ -37,6 +37,14 @@ export interface VoteStore {
      * again after a restart; stores that lose data on restart can omit it.
      */
     pending?(): Promise<VoteRecord[]> | VoteRecord[]
+    /**
+     * With several bot processes on one store: claims the reminder of the vote that ends at `expiresAt`,
+     * so exactly one process sends it. `true`: this process sends it; `false`: another process has it;
+     * `undefined`: this store cannot claim (then only the process with shard 0 restores reminders).
+     */
+    claimReminder?(user: string, expiresAt: number): Promise<boolean | undefined> | boolean | undefined
+    /** Ends a claim once the reminder is marked as sent (or dropped). */
+    releaseReminder?(user: string, expiresAt: number): Promise<void> | void
 }
 
 /** Folds a new vote into the user's record. Test votes must not be passed. */
@@ -119,7 +127,19 @@ export interface DataBaseLike {
     find(data: { type: string; name: string }): Promise<Array<{ value: string }>>
     /** ReForgeDB: resolves once connected, rejects after `timeout` ms. */
     ready?(timeout?: number): Promise<void>
+    /** ReForgeDB: starts a stored cooldown only if it is not running, across processes; `0` when started. */
+    cdClaim?(data: { name: string; id?: string; duration: number }): Promise<number>
+    cdDelete?(identifier: string): Promise<unknown>
+    make_cdIdentifier?(data: { name?: string; id?: string }): string
 }
+
+/**
+ * Reminder claims are ReForgeDB cooldowns with this name, `<user>.<expiresAt>` as the ID. Each one is
+ * deleted as soon as the reminder is marked as sent; one left by a process that stopped in between
+ * expires after `REMINDER_CLAIM_TTL` ms (a `cooldownExpire` command sees it under this name).
+ */
+export const REMINDER_CLAIM = "reforge.topgg.reminder"
+export const REMINDER_CLAIM_TTL = 10 * 60_000
 
 interface ClientLike {
     options: { extensions?: Array<{ name: string; constructor: Function }> }
@@ -252,6 +272,23 @@ export class DatabaseVoteStore implements VoteStore {
     async pending() {
         const rows = await (await this.database(60_000)).find({ type: "user", name: this.variable })
         return rows.map((r) => parseRecord(r.value)).filter((r): r is VoteRecord => !!r && !r.reminded)
+    }
+
+    /**
+     * ReForgeDB: a conditional write in the database decides which process sends a reminder, so with
+     * several processes exactly one does. ForgeDB has no conditional write: `undefined`.
+     */
+    async claimReminder(user: string, expiresAt: number) {
+        const db = await this.database(3_000)
+        if (typeof db.cdClaim !== "function") return undefined
+        return (await db.cdClaim({ name: REMINDER_CLAIM, id: `${user}.${expiresAt}`, duration: REMINDER_CLAIM_TTL })) === 0
+    }
+
+    async releaseReminder(user: string, expiresAt: number) {
+        const db = await this.database(3_000)
+        if (typeof db.cdDelete === "function" && typeof db.make_cdIdentifier === "function") {
+            await db.cdDelete(db.make_cdIdentifier({ name: REMINDER_CLAIM, id: `${user}.${expiresAt}` }))
+        }
     }
 }
 

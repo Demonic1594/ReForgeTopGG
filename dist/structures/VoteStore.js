@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ForgeDBVoteStore = exports.DatabaseVoteStore = exports.DATABASE_EXTENSIONS = exports.MemoryVoteStore = void 0;
+exports.ForgeDBVoteStore = exports.DatabaseVoteStore = exports.REMINDER_CLAIM_TTL = exports.REMINDER_CLAIM = exports.DATABASE_EXTENSIONS = exports.MemoryVoteStore = void 0;
 exports.applyVote = applyVote;
 exports.currentStreak = currentStreak;
 exports.recordToVote = recordToVote;
@@ -76,6 +76,13 @@ exports.MemoryVoteStore = MemoryVoteStore;
 /** The database extensions the database store works with, in order of preference. */
 exports.DATABASE_EXTENSIONS = ["reforge.db", "forge.db"];
 const LABELS = { "reforge.db": "ReForgeDB", "forge.db": "ForgeDB" };
+/**
+ * Reminder claims are ReForgeDB cooldowns with this name, `<user>.<expiresAt>` as the ID. Each one is
+ * deleted as soon as the reminder is marked as sent; one left by a process that stopped in between
+ * expires after `REMINDER_CLAIM_TTL` ms (a `cooldownExpire` command sees it under this name).
+ */
+exports.REMINDER_CLAIM = "reforge.topgg.reminder";
+exports.REMINDER_CLAIM_TTL = 10 * 60_000;
 /** The database extensions the bot loaded, preferred one first. */
 function loadedDatabaseExtensions(client) {
     const out = [];
@@ -206,6 +213,22 @@ class DatabaseVoteStore {
     async pending() {
         const rows = await (await this.database(60_000)).find({ type: "user", name: this.variable });
         return rows.map((r) => parseRecord(r.value)).filter((r) => !!r && !r.reminded);
+    }
+    /**
+     * ReForgeDB: a conditional write in the database decides which process sends a reminder, so with
+     * several processes exactly one does. ForgeDB has no conditional write: `undefined`.
+     */
+    async claimReminder(user, expiresAt) {
+        const db = await this.database(3_000);
+        if (typeof db.cdClaim !== "function")
+            return undefined;
+        return (await db.cdClaim({ name: exports.REMINDER_CLAIM, id: `${user}.${expiresAt}`, duration: exports.REMINDER_CLAIM_TTL })) === 0;
+    }
+    async releaseReminder(user, expiresAt) {
+        const db = await this.database(3_000);
+        if (typeof db.cdDelete === "function" && typeof db.make_cdIdentifier === "function") {
+            await db.cdDelete(db.make_cdIdentifier({ name: exports.REMINDER_CLAIM, id: `${user}.${expiresAt}` }));
+        }
     }
 }
 exports.DatabaseVoteStore = DatabaseVoteStore;

@@ -76,6 +76,8 @@ class ReForgeTopGG extends forgescript_1.ForgeExtension {
     description = "Posts your bot stats to Top.gg and receives votes from it, safely.";
     version = require("../package.json").version;
     client;
+    /** Reminders scheduled from the store after a restart (`user:expiresAt`), not from a vote this process received. */
+    restored = new Set();
     emitter = new tiny_typed_emitter_1.TypedEmitter();
     commands;
     /** The vote webhook, or `null` when it is disabled. */
@@ -352,7 +354,22 @@ class ReForgeTopGG extends forgescript_1.ForgeExtension {
     async remind(user, expiresAt) {
         if (this.closed)
             return false;
+        const key = `${user}:${expiresAt}`;
+        const restored = this.restored.delete(key);
+        let claimed = false;
         try {
+            // Several bot processes on one store: the store decides which one sends it (ReForgeDB:
+            // a conditional write). A store that cannot claim leaves restored reminders to shard 0.
+            const claim = await this.store.claimReminder?.(user, expiresAt);
+            if (claim === false) {
+                Logger_1.ReForgeTopGGLogger.debug(`reminder of ${user}: another process sends it`);
+                return false;
+            }
+            if (claim === undefined && restored && !this.ownsShardZero()) {
+                Logger_1.ReForgeTopGGLogger.debug(`reminder of ${user}: left to the process with shard 0 (this store cannot claim reminders)`);
+                return false;
+            }
+            claimed = claim === true;
             const record = await this.userLock.run(user, async () => {
                 const current = await this.store.get(user);
                 // A newer vote moved the reminder, or it was already sent.
@@ -377,6 +394,17 @@ class ReForgeTopGG extends forgescript_1.ForgeExtension {
             this.emitError(new Error(`Vote reminder for ${user} failed: ${(0, Logger_1.errorMessage)(err)}`));
             return false;
         }
+        finally {
+            // The record is marked by now: a process claiming after this sees it as sent.
+            if (claimed) {
+                await Promise.resolve(this.store.releaseReminder?.(user, expiresAt)).catch((err) => Logger_1.ReForgeTopGGLogger.debug(`reminder claim of ${user} not released: ${(0, Logger_1.errorMessage)(err)}`));
+            }
+        }
+    }
+    /** True without sharding across processes, or in the process that holds shard 0. */
+    ownsShardZero() {
+        const shard = this.client?.shard;
+        return !shard || !Array.isArray(shard.ids) || shard.ids.includes(0);
     }
     async restoreReminders() {
         try {
@@ -387,10 +415,13 @@ class ReForgeTopGG extends forgescript_1.ForgeExtension {
                 if (now - record.expiresAt > this.reminderMaxDelay)
                     stale.push(record);
                 else {
+                    this.restored.add(`${record.user}:${record.expiresAt}`);
                     this.reminders?.schedule(record.user, record.expiresAt);
                     scheduled++;
                 }
             }
+            for (const record of stale)
+                this.restored.add(`${record.user}:${record.expiresAt}`);
             // Marked as sent one at a time, never as a burst of writes, and after
             // the reminders that are still due have been scheduled.
             for (const record of stale) {

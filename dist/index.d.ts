@@ -124,6 +124,8 @@ export declare class ReForgeTopGG extends ForgeExtension {
     description: string;
     version: any;
     private client;
+    /** Reminders scheduled from the store after a restart (`user:expiresAt`), not from a vote this process received. */
+    private readonly restored;
     readonly emitter: TypedEmitter<TransformEvents<ITopGGEvents>>;
     commands: TopGGCommandManager;
     /** The vote webhook, or `null` when it is disabled. */
@@ -186,6 +188,8 @@ export declare class ReForgeTopGG extends ForgeExtension {
      * Holds the user's lock: a vote stored meanwhile is never overwritten.
      */
     private remind;
+    /** True without sharding across processes, or in the process that holds shard 0. */
+    private ownsShardZero;
     private restoreReminders;
     /**
      * Sends a test vote to the running webhook over HTTP, exactly as Top.gg
