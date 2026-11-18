@@ -68,7 +68,7 @@ Each row was reproduced on 1.1.4 (or read in its source) and has a test in `test
     ```
 
     > ℹ️ **Note**\
-    > The compiled code is committed, so no build step is needed. The command above follows `main`; to pin a release, add its tag, e.g. `npm i github:Demonic1594/ReForgeTopGG#v3.2.0`. All releases are listed under [tags](https://github.com/Demonic1594/ReForgeTopGG/tags).
+    > The compiled code is committed, so no build step is needed. The command above follows `main`; to pin a release, add its tag, e.g. `npm i github:Demonic1594/ReForgeTopGG#v3.3.0`. All releases are listed under [tags](https://github.com/Demonic1594/ReForgeTopGG/tags).
 
 2. Here's an example of how your main file should look:
     ```js
@@ -233,7 +233,7 @@ Every `upvote` the webhook accepts is recorded for its voter: count, weekend poi
 
 - **`store: "memory"`** (default) keeps up to 100,000 users and forgets everything on restart.
 - **`store: "reforgedb"`** keeps one JSON value per user in the user variable `topggVote` (readable with `$getUserVar[topggVote;<user ID>]`) of the database extension your bot loaded: ReForgeDB, or the original ForgeDB. `store: "forgedb"` does the same, so 3.0.0 configurations keep working. Add `new ReForgeDB()` or `new ForgeDB()` to your extensions, before or after ReForgeTopGG; ReForgeTopGG refuses to start without one. Load only one of them (they add the same functions); with both, vote history goes to ReForgeDB and a warning is logged. With ForgeDB alone, a one-time reminder to consider switching to ReForgeDB is logged at start-up (shared with the other ReForge extensions, so a bot sees it once); `logLevel: "warn"` hides it.
-- **Your own store:** pass an object with `get(user)`, `set(record)` and optionally `pending()` (records whose reminder is not sent yet, to reschedule reminders after a restart).
+- **Your own store:** pass an object with `get(user)`, `set(record)` and optionally `pending()` (records whose reminder is not sent yet, to reschedule reminders after a restart). A store shared by several bot processes can also have `claimReminder(user, expiresAt)`: return `true` when this process should send the reminder, `false` when another one has it (a conditional write in your database), and `releaseReminder(user, expiresAt)`, called once it is marked as sent.
 
 If writing a vote fails, the webhook answers `500` so Top.gg delivers it again, and the `error` event fires.
 
@@ -242,6 +242,8 @@ A **streak** grows by one when a vote comes at most `streakGrace` (12 hours by d
 **Reminders** (`reminders: true`) fire `voteReminder` once, when the 12 hours of a vote are over. A newer vote moves the reminder. With a store that has `pending()` (memory and the database store do), reminders that were still due are scheduled again when the bot is ready.
 
 A reminder that came due while the bot was offline is sent when the bot is back, if it is at most `reminderMaxDelay` (12 hours) late. Older ones are dropped and marked as sent, and their number is logged: a bot that was off for a week, or that turns `reminders` on for the first time with a long history in its store, does not send a flood of "you can vote again" messages about votes from long ago.
+
+With several bot processes on one database (sharding), every process restores the pending reminders, and each reminder is still sent once. With ReForgeDB each one is claimed with a conditional write (a ReForgeDB cooldown named `reforge.topgg.reminder`, deleted right after), so whichever process gets there first sends it. ForgeDB has no conditional write: there, only the process that holds shard 0 sends restored reminders. A reminder for a vote the bot received while running is sent by the process that received the vote.
 
 ReForgeTopGG warns at start-up when `voteReminder` is in `events` but `reminders` is off (the event would never fire), and when `reminders` is on but nothing listens to `voteReminder`.
 
@@ -303,6 +305,8 @@ No level ever writes `auth`, `webhook.secret` or `token`, an `Authorization` or 
 Both packages cannot be loaded at once: they register the same functions and events. ReForgeTopGG stops at start-up if `forge.topgg` is also in your extensions. The extension registers itself as `reforge.topgg`.
 
 <h3 align="center">Upgrading from 2.x</h3><hr>
+
+**3.3.0** needs no changes. A bot running several processes on one database no longer sends a restored reminder once per process.
 
 **3.2.0** needs no changes. `@top-gg/sdk` and `topgg-autoposter` are no longer installed (run `npm prune` to remove them); the extension calls Top.gg with Node.js's built-in `fetch`. Only code that reached @top-gg/sdk's `Api` through `TopGGApi#client` for methods other than `hasVoted`, `getBot`, `isWeekend` and `postStats` has to install @top-gg/sdk itself.
 

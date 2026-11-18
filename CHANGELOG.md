@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.3.0 (November 2026)
+
+Tag [`v3.3.0`](https://github.com/Demonic1594/ReForgeTopGG/releases/tag/v3.3.0) · [all changes since 3.2.0](https://github.com/Demonic1594/ReForgeTopGG/compare/v3.2.0...v3.3.0) · [upgrade notes](README.md#upgrading-from-2x)
+
+**Each vote reminder is sent once, also with several bot processes.** Nothing to change in your bot.
+
+### Fixed
+- **A restored reminder was sent once per process.** With several bot processes on one database (sharding), every process restores the pending reminders after a restart, and the "already sent?" check was a read and then a write, guarded by a lock inside one process only. Reproduced on 3.2.0 with real processes on one SQLite file: of 4 processes, 2 sent the same reminder; with ForgeDB, both of 2 did.
+  - With ReForgeDB, a reminder is claimed before it is sent, with ReForgeDB's conditional write (`DataBase.cdClaim`, the claim its own `cooldownExpire` event uses), so exactly one process sends it. The claim is a ReForgeDB cooldown named `reforge.topgg.reminder`, deleted once the reminder is marked as sent; one left by a process that stopped in between expires after 10 minutes. If a process stops between claiming and sending, that one reminder is lost rather than sent twice.
+  - ForgeDB has no conditional write: only the process that holds shard 0 sends restored reminders. A reminder for a vote a process received while running is sent by that process, as before.
+
+### Added
+- `VoteStore.claimReminder(user, expiresAt)` and `releaseReminder(user, expiresAt)`, optional, for your own store shared by several processes. `DatabaseVoteStore` has both. `REMINDER_CLAIM` and `REMINDER_CLAIM_TTL` are exported.
+
+### Tests
+- `test/multiprocess.test.js` runs real processes on one SQLite file: 4 processes on ReForgeDB send a restored reminder once; on ForgeDB only shard 0 sends it; one process without sharding still sends it. The first two fail on 3.2.0.
+
 ## 3.2.0 (November 2026)
 
 Tag [`v3.2.0`](https://github.com/Demonic1594/ReForgeTopGG/releases/tag/v3.2.0) · [all changes since 3.1.0](https://github.com/Demonic1594/ReForgeTopGG/compare/v3.1.0...v3.2.0) · [upgrade notes](README.md#upgrading-from-2x)
